@@ -17,14 +17,14 @@ Phase 1 **delivery** (stdout text vs Telegram, etc.) is still open.
 
 ## Status
 
-Scaffold only. Auth and digest CLI come next, step by step.
+Readonly digest CLI is in place (`emails-assistant digest` / `login` / `smoke`). Delivery channel still open.
 
 ## Quick start
 
 1. Dev environment: **[docs/dev.md](docs/dev.md)** (Dev Container, host vs Keychain).
 2. `cp .env.example .env` — put real addresses only in local `.env` (gitignored).
-3. Google Cloud OAuth (manual) → Keychain items for `email1` / `email2`.
-4. Run commands — TBD after auth lands.
+3. Google Cloud OAuth (manual) → Keychain items for `email1` / `email2` (`emails-assistant login …`).
+4. `emails-assistant digest` — plain-text digest to stdout.
 
 ## Layout
 
