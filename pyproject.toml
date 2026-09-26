@@ -1,0 +1,22 @@
+[project]
+name = "emails-assistant"
+version = "0.1.0"
+description = "Personal Gmail assistant (readonly digest first, expandable later)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "google-api-python-client==2.179.0",
+  "google-auth==2.40.3",
+  "google-auth-httplib2==0.2.0",
+  "google-auth-oauthlib==1.2.2",
+]
+
+[project.scripts]
+emails-assistant = "emails_assistant.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
