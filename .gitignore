@@ -1,0 +1,28 @@
+# auth leftovers (credentials live in Keychain — never commit these if created by mistake)
+secrets/
+.creds/
+**/token*.json
+**/client_secret*.json
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# local session handoffs (visible in Dev Container; not for git)
+.handoff/
+
+# os / ide
+.DS_Store
+.idea/
+.vscode/
