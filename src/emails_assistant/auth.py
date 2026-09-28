@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, NoReturn
@@ -86,39 +87,38 @@ def _parse_client_json(raw: str) -> dict[str, Any]:
     return data
 
 
-def _client_config(*, client_file: Path | None) -> dict[str, Any]:
-    if client_file is not None:
-        return _parse_client_json(client_file.read_text(encoding="utf-8"))
-    return _parse_client_json(
-        get_generic_password(
-            service=config.keychain_service(),
-            account=config.OAUTH_CLIENT_ACCOUNT,
-        )
-    )
-
-
 def login(
     alias: str,
     *,
-    client_file: Path | None = None,
-    token_file: Path | None = None,
+    client_json: str,
     oauth_port: int = 0,
     open_browser: bool = True,
 ) -> Credentials:
-    """Browser OAuth; store credentials in Keychain or ``token_file``."""
+    """Browser OAuth. Returns the mailbox token; the caller stores it.
+
+    The client secret is accepted for this run only. Nothing is written to
+    disk or Keychain here. The authorization URL goes to stderr.
+    """
     config.resolve_alias(alias)
     flow = InstalledAppFlow.from_client_config(
-        _client_config(client_file=client_file),
+        _parse_client_json(client_json),
         scopes=[config.GMAIL_READONLY_SCOPE],
     )
+    original_authorization_url = flow.authorization_url
+
+    def _authorization_url(**kwargs: Any) -> tuple[str, str]:
+        url, state = original_authorization_url(**kwargs)
+        print(url, file=sys.stderr)
+        return url, state
+
+    flow.authorization_url = _authorization_url  # type: ignore[method-assign]
     logger.info("Starting OAuth for alias=%s (port=%s)", alias, oauth_port or "auto")
-    creds = flow.run_local_server(
+    return flow.run_local_server(
         port=oauth_port,
         prompt="consent",
         open_browser=open_browser,
+        authorization_prompt_message="",
     )
-    _store_credentials(alias, creds, token_file=token_file)
-    return creds
 
 
 def load_credentials(
