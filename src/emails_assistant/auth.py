@@ -1,4 +1,4 @@
-"""OAuth login and credential load/store (Keychain or injected files)."""
+"""OAuth login and bearer access-token load."""
 
 from __future__ import annotations
 
@@ -6,20 +6,13 @@ import json
 import logging
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Mapping, NoReturn
 
 from google.auth import _helpers
-from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 
 from emails_assistant import config
-from emails_assistant.keychain import (
-    KeychainError,
-    get_generic_password,
-    set_generic_password,
-)
+from emails_assistant.keychain import KeychainError
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +54,7 @@ def load_access_credentials(payload: Mapping[str, Any]) -> Credentials:
     token = payload.get("access_token")
     if not isinstance(token, str) or not token.strip():
         _reject_access_payload()
-    if "expiry" not in payload or payload.get("expiry") in (None, ""):
-        _reject_access_payload()
-    expiry = _parse_access_expiry(payload["expiry"])
+    expiry = _parse_access_expiry(payload.get("expiry"))
     if access_token_is_due(expiry):
         _reject_access_payload()
     return Credentials(
@@ -99,6 +90,8 @@ def login(
     The client secret is accepted for this run only. Nothing is written to
     disk or Keychain here. The authorization URL goes to stderr.
     """
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
     config.resolve_alias(alias)
     flow = InstalledAppFlow.from_client_config(
         _parse_client_json(client_json),
@@ -118,54 +111,4 @@ def login(
         prompt="consent",
         open_browser=open_browser,
         authorization_prompt_message="",
-    )
-
-
-def load_credentials(
-    alias: str,
-    *,
-    token_file: Path | None = None,
-) -> Credentials:
-    """Load credentials; refresh and re-store when needed."""
-    config.resolve_alias(alias)
-    if token_file is not None:
-        raw = token_file.read_text(encoding="utf-8")
-    else:
-        raw = get_generic_password(
-            service=config.keychain_service(),
-            account=config.token_account(alias),
-        )
-    creds = Credentials.from_authorized_user_info(
-        json.loads(raw),
-        scopes=[config.GMAIL_READONLY_SCOPE],
-    )
-    if creds.valid:
-        return creds
-    if creds.expired and creds.refresh_token:
-        logger.info("Refreshing access token for alias=%s", alias)
-        creds.refresh(Request())
-        _store_credentials(alias, creds, token_file=token_file)
-        return creds
-    raise KeychainError(
-        f"Credentials for {alias!r} are invalid; run login for that alias again."
-    )
-
-
-def _store_credentials(
-    alias: str,
-    creds: Credentials,
-    *,
-    token_file: Path | None,
-) -> None:
-    payload = creds.to_json()
-    if token_file is not None:
-        token_file.parent.mkdir(parents=True, exist_ok=True)
-        token_file.write_text(payload, encoding="utf-8")
-        token_file.chmod(0o600)
-        logger.info("Wrote token file %s", token_file)
-        return
-    set_generic_password(
-        service=config.keychain_service(),
-        account=config.token_account(alias),
-        password=payload,
     )

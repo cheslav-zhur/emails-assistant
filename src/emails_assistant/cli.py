@@ -44,9 +44,7 @@ def access_token_path(alias: str) -> Path:
 
 
 def _under_workspace(path: Path) -> bool:
-    workspace = Path.cwd().resolve()
-    resolved = path.resolve()
-    return resolved == workspace or workspace in resolved.parents
+    return path.resolve().is_relative_to(Path.cwd().resolve())
 
 
 def load_access_token_file(path: Path) -> Credentials:
@@ -59,8 +57,6 @@ def load_access_token_file(path: Path) -> Credentials:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         raise KeychainError(ACCESS_RERUN_NOTICE) from None
-    if not isinstance(payload, dict):
-        raise KeychainError(ACCESS_RERUN_NOTICE)
     return load_access_credentials(payload)
 
 

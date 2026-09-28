@@ -6,7 +6,6 @@ import json
 import os
 import stat
 import unittest
-from contextlib import ExitStack
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -132,14 +131,9 @@ def _run_cli(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
 
 
 def _write_access_file(alias: str, payload: dict[str, object]) -> Path:
-    _SHM_DIR.mkdir(parents=True, exist_ok=True)
-    path = _SHM_DIR / f"access-{alias}.json"
-    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, json.dumps(payload).encode("utf-8"))
-    finally:
-        os.close(fd)
-    return path
+    from emails_assistant.cli import write_access_token_file
+
+    return write_access_token_file(alias, json.dumps(payload))
 
 
 class MailCommandAccessTokenTest(unittest.TestCase):
@@ -167,22 +161,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
     def test_digest_reads_two_access_files_and_skips_token_endpoint(self) -> None:
         _write_access_file("email1", _safe_payload())
         _write_access_file("email2", _safe_payload(access_token="ya29-email2"))
-        import emails_assistant.cli as cli_mod
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch("emails_assistant.auth.load_credentials", side_effect=AssertionError("refresh"))
-            )
-            stack.enter_context(
-                patch("emails_assistant.auth.Request", side_effect=AssertionError("token endpoint"))
-            )
-            if hasattr(cli_mod, "load_credentials"):
-                stack.enter_context(
-                    patch.object(cli_mod, "load_credentials", side_effect=AssertionError("refresh"))
-                )
-            gmail = stack.enter_context(
-                patch("emails_assistant.cli.list_recent_messages", return_value=[])
-            )
+        with patch("emails_assistant.cli.list_recent_messages", return_value=[]) as gmail:
             code, out, err = _run_cli(["digest"])
         self.assertEqual(code, 0, err)
         self.assertIn("email1", out)
@@ -216,12 +195,9 @@ class MailCommandAccessTokenTest(unittest.TestCase):
     def test_refresh_error_notice_omits_payload(self) -> None:
         _write_access_file("email1", _safe_payload())
         leaked = "Authorization: Bearer ya29-leaked-body"
-        with (
-            patch("emails_assistant.auth.Request", side_effect=AssertionError("token endpoint")),
-            patch(
-                "emails_assistant.cli.list_recent_messages",
-                side_effect=RefreshError(leaked),
-            ),
+        with patch(
+            "emails_assistant.cli.list_recent_messages",
+            side_effect=RefreshError(leaked),
         ):
             code, out, err = _run_cli(["-v", "digest", "--alias", "email1"])
         combined = f"{code}\n{out}\n{err}"
@@ -284,7 +260,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         )
         auth_url = "https://accounts.google.com/o/oauth2/auth?test=1"
         before = {path for path in Path.cwd().rglob("*") if path.is_file()}
-        with patch("emails_assistant.auth.InstalledAppFlow.from_client_config") as factory:
+        with patch("google_auth_oauthlib.flow.InstalledAppFlow.from_client_config") as factory:
             flow = MagicMock()
             factory.return_value = flow
             flow.authorization_url.return_value = (auth_url, "state")

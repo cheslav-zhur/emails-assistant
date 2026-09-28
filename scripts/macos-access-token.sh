@@ -105,12 +105,7 @@ def main():
     if cmd == "merge-plan":
         existing_raw, response_raw, now_raw = parts(3)
         existing = loads(existing_raw)
-        try:
-            response = json.loads(response_raw)
-        except Exception:
-            fail(1)
-        if not isinstance(response, dict):
-            fail(1)
+        response = loads(response_raw)
         if "refresh_token" in response:
             fail(2)
         if response.get("error") == "invalid_grant":
@@ -143,7 +138,7 @@ def main():
         payload = plan.get("payload")
         if not isinstance(payload, dict) or set(payload) != {"access_token", "expiry"}:
             fail(1)
-        sys.stdout.write(json.dumps({"access_token": payload["access_token"], "expiry": payload["expiry"]}, separators=(",", ":")))
+        sys.stdout.write(json.dumps(access_payload(payload["access_token"], payload["expiry"]), separators=(",", ":")))
         return
     fail(1)
 
@@ -156,11 +151,6 @@ host_py() {
   python3 -c "$HOST_PY" "$@"
 }
 
-die() {
-  echo "error: $*" >&2
-  return 1
-}
-
 need_macos() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "error: run on Mac host, not in Linux container" >&2
@@ -168,17 +158,30 @@ need_macos() {
   fi
 }
 
+# Unset on the Mac. Tests point these at stub executables so the parser can run off Darwin.
 security_cmd() {
+  if [[ -n "${EMAILS_ASSISTANT_SECURITY:-}" ]]; then
+    "$EMAILS_ASSISTANT_SECURITY" "$@"
+    return
+  fi
   need_macos || return 1
   command security "$@"
 }
 
 docker_cmd() {
+  if [[ -n "${EMAILS_ASSISTANT_DOCKER:-}" ]]; then
+    "$EMAILS_ASSISTANT_DOCKER" "$@"
+    return
+  fi
   need_macos || return 1
   command docker "$@"
 }
 
 curl_cmd() {
+  if [[ -n "${EMAILS_ASSISTANT_CURL:-}" ]]; then
+    "$EMAILS_ASSISTANT_CURL" "$@"
+    return
+  fi
   command curl "$@"
 }
 
@@ -231,7 +234,7 @@ clear_legacy_creds() {
 
 refresh_or_keep() {
   local alias="$1" client="$2" now="$3"
-  local existing decision body response status
+  local existing decision body response
   existing="$(security_cmd find-generic-password -s "$SERVICE" -a "token/${alias}" -w)" || return 1
   decision="$(printf '%s\0%s\0' "$existing" "$now" | host_py needs-refresh)" || return 1
   if [[ "$decision" == "no" ]]; then
