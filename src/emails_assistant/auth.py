@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, NoReturn
 
+from google.auth import _helpers
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -19,6 +21,55 @@ from emails_assistant.keychain import (
 )
 
 logger = logging.getLogger(__name__)
+
+ACCESS_RERUN_NOTICE = "Access token missing or rejected. Run the host script again."
+
+
+def _reject_access_payload() -> NoReturn:
+    raise KeychainError(ACCESS_RERUN_NOTICE)
+
+
+def _parse_access_expiry(raw: object) -> datetime:
+    """Naive UTC expiry in the ``to_json()`` form: isoformat plus ``Z``."""
+    if not isinstance(raw, str) or not raw.endswith("Z"):
+        _reject_access_payload()
+    body = raw[:-1]
+    # A numeric offset (``+07:00`` / ``-07:00``) is not the naive UTC form.
+    if "+" in body or body.count("-") != 2:
+        _reject_access_payload()
+    try:
+        return datetime.strptime(body.split(".")[0], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        _reject_access_payload()
+
+
+def access_token_is_due(expiry: datetime) -> bool:
+    """True when google-auth would already treat the token as expired."""
+    return _helpers.utcnow() >= expiry - _helpers.REFRESH_THRESHOLD
+
+
+def load_access_credentials(payload: Mapping[str, Any]) -> Credentials:
+    """Build a readonly Gmail credential from ``access_token`` and ``expiry`` only.
+
+    Refuses refresh material. An already-due token fails before any HTTP call.
+    """
+    if not isinstance(payload, Mapping):
+        _reject_access_payload()
+    if "refresh_token" in payload or "client_secret" in payload:
+        _reject_access_payload()
+    token = payload.get("access_token")
+    if not isinstance(token, str) or not token.strip():
+        _reject_access_payload()
+    if "expiry" not in payload or payload.get("expiry") in (None, ""):
+        _reject_access_payload()
+    expiry = _parse_access_expiry(payload["expiry"])
+    if access_token_is_due(expiry):
+        _reject_access_payload()
+    return Credentials(
+        token=token,
+        expiry=expiry,
+        scopes=[config.GMAIL_READONLY_SCOPE],
+    )
 
 
 def _parse_client_json(raw: str) -> dict[str, Any]:
