@@ -1,4 +1,4 @@
-"""Morning window, day file, and count. Callers read mail and write the file."""
+"""Day-file window and count. Callers read mail and write the file."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class MorningMessage:
+class DailyMessage:
     arrived_at: datetime
     subject: str
     sender: str
@@ -21,12 +21,12 @@ class MorningMessage:
 @dataclass(frozen=True)
 class MailboxRead:
     alias: str
-    messages: tuple[MorningMessage, ...] = ()
+    messages: tuple[DailyMessage, ...] = ()
     error: str | None = None
 
 
 @dataclass(frozen=True)
-class MorningDecision:
+class DailyDecision:
     write: bool
     text: str
     count: int | None
@@ -35,30 +35,30 @@ class MorningDecision:
     path: Path
 
 
-def resolve_morning_dir(
+def resolve_daily_dir(
     *,
     environ: Mapping[str, str] | None = None,
     home: Path | None = None,
 ) -> Path:
     env = os.environ if environ is None else environ
-    override = env.get("EMAILS_ASSISTANT_MORNING_DIR")
+    override = env.get("EMAILS_ASSISTANT_DAILY_DIR")
     if override:
         return Path(override)
     base = Path.home() if home is None else home
     return base / "Library" / "Application Support" / "emails-assistant" / "digests"
 
 
-def decide_morning(
+def decide_daily(
     *,
-    morning_dir: Path,
+    daily_dir: Path,
     now: datetime,
     mailboxes: Sequence[MailboxRead],
-) -> MorningDecision:
+) -> DailyDecision:
     """Return whether to write today's file, its text, and a count-only notice."""
-    day_path = morning_dir / f"{now.date().isoformat()}.txt"
-    start = _window_start(morning_dir, day_path, now)
+    day_path = daily_dir / f"{now.date().isoformat()}.txt"
+    start = _window_start(daily_dir, day_path, now)
     if day_path.is_file() or any(box.error for box in mailboxes):
-        return MorningDecision(
+        return DailyDecision(
             write=False,
             text="",
             count=None,
@@ -67,15 +67,15 @@ def decide_morning(
             path=day_path,
         )
 
-    kept_sections: list[tuple[str, tuple[MorningMessage, ...]]] = []
+    kept_sections: list[tuple[str, tuple[DailyMessage, ...]]] = []
     total = 0
     for box in mailboxes:
         kept = tuple(message for message in box.messages if _as_utc(message.arrived_at) > start)
         total += len(kept)
         kept_sections.append((box.alias, kept))
-    return MorningDecision(
+    return DailyDecision(
         write=True,
-        text=_format_morning(day=day_path.stem, sections=kept_sections, count=total),
+        text=_format_daily(day=day_path.stem, sections=kept_sections, count=total),
         count=total,
         notice=str(total),
         window_start=start,
@@ -111,20 +111,20 @@ def _as_utc(moment: datetime) -> datetime:
     return moment.astimezone(timezone.utc)
 
 
-def _format_morning(
+def _format_daily(
     *,
     day: str,
-    sections: Sequence[tuple[str, tuple[MorningMessage, ...]]],
+    sections: Sequence[tuple[str, tuple[DailyMessage, ...]]],
     count: int,
 ) -> str:
-    header = [f"# emails-assistant morning digest — {day}", ""]
+    header = [f"# emails-assistant daily digest — {day}", ""]
     if count == 0:
         header.extend(["There were no new messages.", ""])
     body = [_format_section(alias, messages) for alias, messages in sections]
     return "\n".join(header + body).rstrip() + "\n"
 
 
-def _format_section(alias: str, messages: tuple[MorningMessage, ...]) -> str:
+def _format_section(alias: str, messages: tuple[DailyMessage, ...]) -> str:
     lines = [f"## {alias} — {len(messages)} message(s)", ""]
     if not messages:
         lines.append("(none)")

@@ -1,4 +1,4 @@
-"""Morning subcommand: both mailboxes, then one day file. No live Gmail."""
+"""Daily subcommand: both mailboxes, then one day file. No live Gmail."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _TOKEN = "ya29-example-access"
 _TOKEN_2 = "ya29-email2"
 _REFRESH = "1//refresh-secret-value"
 _SUBJECT = "secret-subject"
-_FAILURE = "Morning digest did not run."
+_FAILURE = "Daily digest did not run."
 
 
 def _expiry() -> str:
@@ -50,7 +50,7 @@ def _run(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
         patch("sys.stdout", stdout),
         patch("sys.stderr", stderr),
         patch("sys.stdin", StringIO(stdin)),
-        patch("emails_assistant.cli._morning_now", return_value=_NOW),
+        patch("emails_assistant.cli._daily_now", return_value=_NOW),
     ):
         try:
             main(argv)
@@ -132,9 +132,9 @@ class _Service:
 
 
 @pytest.fixture
-def morning_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def daily_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("EMAILS_ASSISTANT_ACCOUNTS", "email1,email2")
-    monkeypatch.setenv("EMAILS_ASSISTANT_MORNING_DIR", str(tmp_path))
+    monkeypatch.setenv("EMAILS_ASSISTANT_DAILY_DIR", str(tmp_path))
     monkeypatch.setenv("EMAILS_ASSISTANT_SINCE_HOURS", "12")
     if _SHM_DIR.exists():
         for path in _SHM_DIR.glob("access-*.json"):
@@ -155,15 +155,15 @@ def _install_mailboxes(*boxes: _Messages) -> tuple[list[_Messages], object]:
     return list(boxes), patch("emails_assistant.gmail_api.build_gmail_service", side_effect=build)
 
 
-def test_two_mailboxes_become_one_file_and_a_count(morning_dir: Path) -> None:
+def test_two_mailboxes_become_one_file_and_a_count(daily_dir: Path) -> None:
     first = _Messages(["a", "b"])
     second = _Messages(["c", "d", "e"])
     _boxes, patched = _install_mailboxes(first, second)
 
     with patched:
-        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+        code, out, err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
 
-    day = morning_dir / "2026-09-29.txt"
+    day = daily_dir / "2026-09-29.txt"
     text = day.read_text(encoding="utf-8")
     assert code == 0, err
     assert out.strip() == "5"
@@ -175,14 +175,14 @@ def test_two_mailboxes_become_one_file_and_a_count(morning_dir: Path) -> None:
     assert _TOKEN_2 not in out
 
 
-def test_query_uses_after_epoch_from_the_previous_file(morning_dir: Path) -> None:
-    epoch = _prior(morning_dir)
+def test_query_uses_after_epoch_from_the_previous_file(daily_dir: Path) -> None:
+    epoch = _prior(daily_dir)
     first = _Messages(["a"])
     second = _Messages(["b"])
     _boxes, patched = _install_mailboxes(first, second)
 
     with patched:
-        code, out, _err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+        code, out, _err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
 
     assert code == 0, out
     assert first.queries == [f"after:{epoch}"]
@@ -190,16 +190,16 @@ def test_query_uses_after_epoch_from_the_previous_file(morning_dir: Path) -> Non
     assert all("newer_than" not in query for query in first.queries + second.queries)
 
 
-def test_one_hundred_twenty_messages_are_all_written(morning_dir: Path) -> None:
+def test_one_hundred_twenty_messages_are_all_written(daily_dir: Path) -> None:
     ids = [str(index) for index in range(120)]
     first = _Messages(ids)
     second = _Messages([])
     _boxes, patched = _install_mailboxes(first, second)
 
     with patched:
-        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+        code, out, err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
 
-    text = (morning_dir / "2026-09-29.txt").read_text(encoding="utf-8")
+    text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
     assert out.strip() == "120"
     assert "subject-119" in text
@@ -207,10 +207,10 @@ def test_one_hundred_twenty_messages_are_all_written(morning_dir: Path) -> None:
     assert text.count("subject-") == 120
 
 
-def test_digest_prints_and_does_not_write_a_morning_file(morning_dir: Path) -> None:
+def test_digest_prints_and_does_not_write_a_daily_file(daily_dir: Path) -> None:
     from emails_assistant.cli import write_access_token_file
 
-    kept = morning_dir / "2026-09-28.txt"
+    kept = daily_dir / "2026-09-28.txt"
     kept.write_text("keep\n")
     write_access_token_file("email1", _line(_payload(_TOKEN)))
     write_access_token_file("email2", _line(_payload(_TOKEN_2)))
@@ -223,38 +223,38 @@ def test_digest_prints_and_does_not_write_a_morning_file(morning_dir: Path) -> N
     assert "last 12h" in out
     assert "hello" in out
     assert kept.read_text(encoding="utf-8") == "keep\n"
-    assert [path.name for path in morning_dir.iterdir()] == ["2026-09-28.txt"]
+    assert [path.name for path in daily_dir.iterdir()] == ["2026-09-28.txt"]
 
 
-def test_second_alias_failure_writes_no_file_and_hides_the_subject(morning_dir: Path) -> None:
+def test_second_alias_failure_writes_no_file_and_hides_the_subject(daily_dir: Path) -> None:
     first = _Messages(["a"])
     second = _Messages([], error=RuntimeError(_SUBJECT))
     _boxes, patched = _install_mailboxes(first, second)
 
     with patched:
-        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+        code, out, err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
 
     _assert_failed(code, out, err, _SUBJECT, _TOKEN, _TOKEN_2)
-    assert not (morning_dir / "2026-09-29.txt").exists()
+    assert not (daily_dir / "2026-09-29.txt").exists()
 
 
-def test_refresh_token_on_stdin_writes_no_file(morning_dir: Path) -> None:
+def test_refresh_token_on_stdin_writes_no_file(daily_dir: Path) -> None:
     code, out, err = _run(
-        ["morning"],
+        ["daily"],
         stdin=_line(_payload(_TOKEN, refresh_token=_REFRESH, subject=_SUBJECT)),
     )
 
     _assert_failed(code, out, err, _REFRESH, _TOKEN, _SUBJECT)
-    assert not (morning_dir / "2026-09-29.txt").exists()
+    assert not (daily_dir / "2026-09-29.txt").exists()
     assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True
 
 
-def test_payload_count_must_match_aliases(morning_dir: Path) -> None:
+def test_payload_count_must_match_aliases(daily_dir: Path) -> None:
     code, out, err = _run(
-        ["morning"],
+        ["daily"],
         stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _payload("ya29-extra")),
     )
 
     _assert_failed(code, out, err, _TOKEN, _TOKEN_2, "ya29-extra")
-    assert not (morning_dir / "2026-09-29.txt").exists()
+    assert not (daily_dir / "2026-09-29.txt").exists()
     assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True

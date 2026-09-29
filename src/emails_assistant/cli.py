@@ -1,4 +1,4 @@
-"""CLI: login, smoke, digest, morning, search, show."""
+"""CLI: login, smoke, digest, daily, search, show."""
 
 from __future__ import annotations
 
@@ -28,14 +28,14 @@ from emails_assistant.gmail_api import (
     search_messages,
     smoke_list_one,
 )
-from emails_assistant.morning import (
+from emails_assistant.daily import (
+    DailyMessage,
     MailboxRead,
-    MorningMessage,
-    decide_morning,
-    resolve_morning_dir,
+    decide_daily,
+    resolve_daily_dir,
 )
 
-_MORNING_FAILURE = "Morning digest did not run."
+_DAILY_FAILURE = "Daily digest did not run."
 
 ACCESS_TOKEN_DIR = Path("/dev/shm/emails-assistant")
 _QUIET_LOGGERS = (
@@ -96,41 +96,41 @@ def _mail_credentials(alias: str) -> Credentials:
         raise SystemExit(ACCESS_RERUN_NOTICE) from None
 
 
-def _morning_now() -> datetime:
+def _daily_now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _morning_fail() -> None:
-    print(_MORNING_FAILURE)
+def _daily_fail() -> None:
+    print(_DAILY_FAILURE)
     raise SystemExit(1)
 
 
-def _run_morning() -> None:
+def _run_daily() -> None:
     """Read both mailboxes, then write today's file and print only the count."""
     aliases = config.known_aliases()
     for alias in aliases:
         config.resolve_alias(alias)
     lines = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
     if len(lines) != len(aliases):
-        _morning_fail()
+        _daily_fail()
     payloads: list[dict[str, object]] = []
     for line in lines:
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
-            _morning_fail()
+            _daily_fail()
         if not isinstance(payload, dict):
-            _morning_fail()
+            _daily_fail()
         payloads.append(payload)
     try:
         credentials = [load_access_credentials(payload) for payload in payloads]
     except CredentialError:
-        _morning_fail()
+        _daily_fail()
 
-    now = _morning_now()
-    directory = resolve_morning_dir()
-    preview = decide_morning(
-        morning_dir=directory,
+    now = _daily_now()
+    directory = resolve_daily_dir()
+    preview = decide_daily(
+        daily_dir=directory,
         now=now,
         mailboxes=tuple(MailboxRead(alias=alias) for alias in aliases),
     )
@@ -148,7 +148,7 @@ def _run_morning() -> None:
             summaries = search_messages(creds, query=query, max_results=None)
             # ``after:`` already dropped mail at the previous file's epoch.
             messages = tuple(
-                MorningMessage(
+                DailyMessage(
                     arrived_at=preview.window_start + timedelta(seconds=1),
                     subject=item.subject,
                     sender=item.sender,
@@ -159,11 +159,11 @@ def _run_morning() -> None:
             )
             reads.append(MailboxRead(alias=alias, messages=messages))
     except Exception:
-        _morning_fail()
+        _daily_fail()
 
-    decision = decide_morning(morning_dir=directory, now=now, mailboxes=reads)
+    decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads)
     if not decision.write or decision.notice is None:
-        _morning_fail()
+        _daily_fail()
     decision.path.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(decision.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -241,8 +241,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     sub.add_parser(
-        "morning",
-        help="Write today's morning file and print the message count",
+        "daily",
+        help="Write today's digest file and print the message count",
     )
 
     search_p = sub.add_parser(
@@ -307,8 +307,8 @@ def main(argv: list[str] | None = None) -> None:
                 sections.append((alias, messages))
 
             print(format_digest(hours=hours, sections=sections), end="")
-        elif args.command == "morning":
-            _run_morning()
+        elif args.command == "daily":
+            _run_daily()
         elif args.command == "search":
             if args.max_results < 1:
                 raise SystemExit("--max must be >= 1")
