@@ -37,7 +37,7 @@ macOS **Keychain** is the only durable store for the OAuth client secret and eac
 - **One-shot.** `one-shot` prints one JSON object per mailbox on stdout and does not read or write the Dev Container tmpfs. Keep that stdout in memory. Do not write it to the day file, the repo, shell history, or logs.
 - **Login.** `login <container> <alias>` reads the client secret from Keychain and pipes it to the container stdin. The authorization URL is on stderr. The mailbox-token JSON comes back on container stdout and is stored in Keychain unchanged. The container does not keep a credential file.
 
-If an access token is missing, expired, or rejected, the mail command stops with `Access token missing or rejected. Run the host script again.` It does not restart the container. If Google rejects the refresh token, the host script prints `Login is required. The refresh token was rejected.` on stderr and does not print a token.
+If an access token is missing, expired, or rejected, the mail command stops with `Access token missing or rejected. Run the host script again.` It does not restart the container. If Google rejects the refresh token, the host script prints `Login is required for <alias>. The refresh token was rejected.` on stderr and does not print a token.
 
 `.creds/client.json` and `.creds/token-*.json` must be gone. The host script removes them and exits non-zero if any remain. Do not recreate that directory for mail or login.
 

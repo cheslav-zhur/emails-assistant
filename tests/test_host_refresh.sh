@@ -73,6 +73,24 @@ fi
 if [[ -f "$dir/docker_stdout" ]]; then
   cat "$dir/docker_stdout"
 fi
+args=("$@")
+code=""
+rest=()
+for i in "${!args[@]}"; do
+  if [[ "${args[$i]}" == "python3" && "${args[$((i + 1))]:-}" == "-c" ]]; then
+    code="${args[$((i + 2))]}"
+    rest=("${args[@]:$((i + 3))}")
+    break
+  fi
+done
+if [[ -n "$code" ]]; then
+  src="${EMAILS_ASSISTANT_SRC:?}"
+  if ((${#rest[@]})); then
+    PYTHONPATH="$src" python3 -c "$code" "${rest[@]}" <"$dir/docker_stdin.$n"
+  else
+    PYTHONPATH="$src" python3 -c "$code" <"$dir/docker_stdin.$n"
+  fi
+fi
 EOF
 chmod +x "$BIN/security-stub" "$BIN/curl-stub" "$BIN/docker-stub"
 
@@ -118,6 +136,7 @@ run() {
   EMAILS_ASSISTANT_NOW="$NOW" \
   EMAILS_ASSISTANT_ACCOUNTS="$EMAILS_ASSISTANT_ACCOUNTS" \
   EMAILS_ASSISTANT_KEYCHAIN_SERVICE=emails-assistant \
+  EMAILS_ASSISTANT_SRC="$ROOT/src" \
   "$SCRIPT" "$@"
 }
 
@@ -201,7 +220,7 @@ set -e
 err="$(cat "$IO_DIR/err")"
 [[ "$status" -ne 0 ]] || fail "invalid_grant exited 0"
 [[ "$stdout" != *'ya29-'* ]] || fail "one-shot stdout was a token"
-[[ "$err" == *"Login is required."* ]] || fail "missing re-login notice"
+[[ "$err" == *"Login is required for email2. The refresh token was rejected."* ]] || fail "missing re-login notice"
 [[ "$err" != *'ya29-should-not-leak'* ]] || fail "error body leaked"
 assert_no_secret_output "${stdout}${err}"
 [[ "$(sec_get token/email1)" == *'ya29-email1-old'* ]] || fail "email1 token was replaced"
@@ -251,13 +270,28 @@ run inject "box-name" >/dev/null
 [[ "$(cat "$IO_DIR/docker_n")" -eq 1 ]] || fail "inject did not exec"
 args="$(cat "$IO_DIR/docker_args.0")"
 [[ "$args" == *"exec -i -u vscode box-name"* ]] || fail "inject args"
-[[ "$args" == *"write_access_token_file"* ]] || fail "inject does not use the 0600 writer"
+[[ "$args" == *"write_access_token_file(sys.argv[1], sys.stdin.read())"* ]] || fail "inject does not use the 0600 writer"
 [[ "$args" != *'ya29-inject-access'* ]] || fail "access token was a docker argument"
 stdin="$(cat "$IO_DIR/docker_stdin.0")"
 assert_access_only "$stdin"
 [[ "$stdin" == *'ya29-inject-access'* ]] || fail "inject stdin missing token"
+access_file="/dev/shm/emails-assistant/access-email1.json"
+[[ -f "$access_file" ]] || fail "inject did not write the access file"
+mode="$(stat -c '%a' "$access_file")"
+[[ "$mode" == "600" ]] || fail "inject access file mode is $mode"
+grep -q 'ya29-inject-access' "$access_file" || fail "inject file missing token"
+rm -f "$access_file"
 
 legacy="$ROOT/.creds"
+if [[ -e "$legacy" ]]; then
+  fail "repo .creds already exists"
+fi
+cleanup_legacy() {
+  rm -f "$ROOT/.creds/client.json" "$ROOT/.creds/token-email1.json"
+  rm -rf "$ROOT/.creds/token-email2.json"
+  rmdir "$ROOT/.creds" 2>/dev/null || true
+}
+trap cleanup_legacy EXIT
 mkdir -p "$legacy"
 printf '%s' "$SECRET_SENTINEL" >"$legacy/client.json"
 printf '%s' "$REFRESH_SENTINEL" >"$legacy/token-email1.json"
@@ -275,7 +309,9 @@ status=$?
 set -e
 [[ "$status" -ne 0 ]] || fail "remaining credential file exited 0"
 assert_no_secret_output "$clear_err"
-rm -rf "$legacy"
+cleanup_legacy
+trap - EXIT
+[[ ! -e "$legacy" ]] || fail "legacy cleanup left .creds"
 
 reset_io email1
 install_mailbox email1 ya29-login-old "2026-09-28T12:10:00Z"

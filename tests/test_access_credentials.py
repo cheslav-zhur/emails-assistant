@@ -6,9 +6,11 @@ import json
 import os
 import stat
 import unittest
+from contextlib import contextmanager
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import httplib2
@@ -42,6 +44,47 @@ def _safe_payload(**extra: object) -> dict[str, object]:
     }
     payload.update(extra)
     return payload
+
+
+def _assert_bearer_only(test: unittest.TestCase, cred: Credentials) -> None:
+    test.assertIsNone(cred.refresh_token)
+    test.assertIsNone(cred.client_secret)
+    test.assertIsNone(cred.token_uri)
+
+
+@contextmanager
+def _gmail_transport(status: int, payload: bytes) -> Iterator[tuple[list[str], list[Credentials]]]:
+    """Record AuthorizedHttp calls. The inner httplib2 transport never leaves the test."""
+    uris: list[str] = []
+    seen: list[Credentials] = []
+    real_init = AuthorizedHttp.__init__
+
+    def spy_init(
+        self: AuthorizedHttp,
+        credentials: Credentials,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        seen.append(credentials)
+        real_init(self, credentials, *args, **kwargs)
+
+    def request(
+        self: object,
+        uri: str,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        **kwargs: object,
+    ) -> tuple[httplib2.Response, bytes]:
+        del self, method, body, headers, kwargs
+        uris.append(uri)
+        return httplib2.Response({"status": str(status)}), payload
+
+    with (
+        patch.object(AuthorizedHttp, "__init__", spy_init),
+        patch("httplib2.Http.request", request),
+    ):
+        yield uris, seen
 
 
 class _RecordingHttp:
@@ -161,13 +204,34 @@ class MailCommandAccessTokenTest(unittest.TestCase):
     def test_digest_reads_two_access_files_and_skips_token_endpoint(self) -> None:
         _write_access_file("email1", _safe_payload())
         _write_access_file("email2", _safe_payload(access_token="ya29-email2"))
-        with patch("emails_assistant.cli.list_recent_messages", return_value=[]) as gmail:
+        empty = b'{"messages":[],"resultSizeEstimate":0}'
+        with _gmail_transport(200, empty) as (uris, seen):
             code, out, err = _run_cli(["digest"])
         self.assertEqual(code, 0, err)
         self.assertIn("email1", out)
         self.assertIn("email2", out)
-        self.assertEqual([call.args[0].token for call in gmail.call_args_list], [_TOKEN, "ya29-email2"])
+        self.assertEqual([cred.token for cred in seen], [_TOKEN, "ya29-email2"])
+        for cred in seen:
+            _assert_bearer_only(self, cred)
+        self.assertTrue(uris)
+        self.assertTrue(all(uri.startswith("https://gmail.googleapis.com/") for uri in uris))
+        self.assertNotIn(_TOKEN_ENDPOINT, uris)
+        self.assertNotIn("/token", " ".join(uris))
         self.assertNotIn(_TOKEN, err)
+
+    def test_digest_401_stays_on_gmail_and_exits_with_notice(self) -> None:
+        _write_access_file("email1", _safe_payload())
+        with _gmail_transport(401, b'{"error":"unauthorized"}') as (uris, seen):
+            code, out, err = _run_cli(["digest", "--alias", "email1"])
+        combined = f"{code}\n{out}\n{err}"
+        self.assertIn(ACCESS_RERUN_NOTICE, combined)
+        self.assertEqual(len(seen), 1)
+        _assert_bearer_only(self, seen[0])
+        self.assertEqual(len(uris), 1)
+        self.assertTrue(uris[0].startswith("https://gmail.googleapis.com/"))
+        self.assertNotIn(_TOKEN_ENDPOINT, uris[0])
+        self.assertNotIn("/token", uris[0])
+        self.assertNotIn(_TOKEN, combined)
 
     def test_digest_expired_alias_skips_gmail(self) -> None:
         _write_access_file("email1", _safe_payload())
@@ -184,6 +248,8 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertIn(ACCESS_RERUN_NOTICE, f"{code}\n{err}")
         called_tokens = [call.args[0].token for call in gmail.call_args_list]
         self.assertNotIn("ya29-expired-alias", called_tokens)
+        for call in gmail.call_args_list:
+            _assert_bearer_only(self, call.args[0])
 
     def test_search_missing_file_exits_with_notice(self) -> None:
         with patch("emails_assistant.cli.search_messages") as gmail:
@@ -198,10 +264,11 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         with patch(
             "emails_assistant.cli.list_recent_messages",
             side_effect=RefreshError(leaked),
-        ):
+        ) as gmail:
             code, out, err = _run_cli(["-v", "digest", "--alias", "email1"])
         combined = f"{code}\n{out}\n{err}"
         self.assertIn(ACCESS_RERUN_NOTICE, combined)
+        _assert_bearer_only(self, gmail.call_args.args[0])
         self.assertNotIn("ya29-leaked-body", combined)
         self.assertNotIn("Authorization", combined)
         self.assertNotIn(_TOKEN, combined)
@@ -233,9 +300,14 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         from emails_assistant.cli import load_access_token_file
 
         workspace_file = Path.cwd() / "access-email1.json"
-        with self.assertRaises(KeychainError) as caught:
-            load_access_token_file(workspace_file)
-        self.assertNotIn("access-email1.json", str(caught.exception))
+        workspace_file.write_text(json.dumps(_safe_payload()), encoding="utf-8")
+        try:
+            with self.assertRaises(KeychainError) as caught:
+                load_access_token_file(workspace_file)
+            self.assertNotIn("access-email1.json", str(caught.exception))
+            self.assertNotIn(_TOKEN, str(caught.exception))
+        finally:
+            workspace_file.unlink(missing_ok=True)
 
     def test_login_stdout_is_mailbox_json_only(self) -> None:
         expiry = _helpers.utcnow().replace(microsecond=0) + timedelta(hours=1)

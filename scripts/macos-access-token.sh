@@ -4,7 +4,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE="${EMAILS_ASSISTANT_KEYCHAIN_SERVICE:-emails-assistant}"
-RELOGIN_NOTICE="Login is required. The refresh token was rejected."
 LEGACY_DIR="$ROOT/.creds"
 
 read -r -d '' HOST_PY <<'PY' || true
@@ -263,7 +262,7 @@ collect_plans() {
     plan="$(refresh_or_keep "$alias" "$client" "$now")" || status=$?
     if [[ "$status" -ne 0 ]]; then
       if [[ "$status" -eq 3 ]]; then
-        echo "$RELOGIN_NOTICE" >&2
+        echo "Login is required for ${alias}. The refresh token was rejected." >&2
       else
         echo "error: refresh was rejected" >&2
       fi
