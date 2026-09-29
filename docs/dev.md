@@ -10,7 +10,7 @@ Personal Python Dev Container standard (image, pip cache, ssh-agent): see `~/pro
 
 ### What this repo uses
 
-- Image: `mcr.microsoft.com/devcontainers/python:3.12-bookworm`
+- Image: `Dockerfile`, from `mcr.microsoft.com/devcontainers/python:3.12-bookworm`. It installs `requirements.txt`. `postCreateCommand` still installs this package editable from the mounted workspace.
 - `TZ`: `Asia/Ho_Chi_Minh` (logs / local scheduling; Gmail API queries usually use relative/`newer_than` or UTC)
 - Pip cache: named volume → `/home/vscode/.cache/pip` (pip default; no `PIP_CACHE_DIR`)
 - `postCreateCommand`: `chown` that cache path, then `pip install -r requirements.txt` and `pip install -e .`
@@ -24,7 +24,7 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 
 - GitHub CLI / `GH_TOKEN`
 - Claude Code mounts/features
-- Custom Dockerfile / compose
+- Compose
 - Extra formatters/linters unless asked
 
 ### Host vs container (auth)
@@ -40,6 +40,30 @@ macOS **Keychain** is the only durable store for the OAuth client secret and eac
 If an access token is missing, expired, or rejected, the mail command stops with `Access token missing or rejected. Run the host script again.` It does not restart the container. If Google rejects the refresh token, the host script prints `Login is required for <alias>. The refresh token was rejected.` on stderr and does not print a token.
 
 `.creds/client.json` and `.creds/token-*.json` must be gone. The host script removes them and exits non-zero if any remain. Do not recreate that directory for mail or login.
+
+### Daily file on the Mac
+
+`scripts/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists or the local calendar day ends.
+
+Each try calls `one-shot` only when Docker is running. That stdout stays in memory and is piped to `docker run --rm -i -u vscode` of the image below. The repo is mounted at `/workspaces/emails-assistant`, the day-file directory at `/daily`, and the Mac timezone comes from `/etc/localtime`. The container imports the mounted package. The script does not attach to the open Dev Container and does not pip install.
+
+The banner is `osascript` `display notification`. A success shows only the count. A failure shows `Daily digest did not run.` once per failure streak. The notification does not open the file.
+
+Build the image once, and again when `requirements.txt` changes. The 08:00 run does not build it:
+
+```bash
+docker build -t emails-assistant:daily -f Dockerfile .
+```
+
+Copy the agent into this clone (`REPLACE_WITH_REPO` in the plist is the repo root):
+
+```bash
+cp scripts/com.emails-assistant.daily.plist ~/Library/LaunchAgents/
+# Edit ProgramArguments to the absolute path of scripts/macos-daily.sh
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.emails-assistant.daily.plist
+```
+
+Day files land in `~/Library/Application Support/emails-assistant/digests` unless `EMAILS_ASSISTANT_DAILY_DIR` is set.
 
 **Keychain write `ps` check.** Not observed in this session: the Linux Dev Container cannot run `security`. The script passes the mailbox JSON to `security add-generic-password -w`, so that JSON can show in the process list for the length of the write. The refresh body goes to curl on stdin, not as a curl argument. Do not paste a token into this doc when the Mac check is run.
 

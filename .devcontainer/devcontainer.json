@@ -1,6 +1,9 @@
 {
   "name": "emails-assistant",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
   "containerEnv": {
     "TZ": "Asia/Ho_Chi_Minh",
     "SSH_AUTH_SOCK": "/ssh-agent"
