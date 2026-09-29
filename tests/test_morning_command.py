@@ -1,0 +1,260 @@
+"""Morning subcommand: both mailboxes, then one day file. No live Gmail."""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from google.auth import _helpers
+
+from emails_assistant.cli import main
+from emails_assistant.gmail_api import MessageSummary
+
+_SHM_DIR = Path("/dev/shm/emails-assistant")
+_NOW = datetime(2026, 9, 29, 10, 30, tzinfo=timezone.utc)
+_TOKEN = "ya29-example-access"
+_TOKEN_2 = "ya29-email2"
+_REFRESH = "1//refresh-secret-value"
+_SUBJECT = "secret-subject"
+_FAILURE = "Morning digest did not run."
+
+
+def _expiry() -> str:
+    moment = (_helpers.utcnow() + _helpers.REFRESH_THRESHOLD + timedelta(minutes=30)).replace(microsecond=0)
+    return moment.isoformat() + "Z"
+
+
+def _payload(token: str = _TOKEN, **extra: object) -> dict[str, object]:
+    body: dict[str, object] = {"access_token": token, "expiry": _expiry()}
+    body.update(extra)
+    return body
+
+
+def _line(payload: dict[str, object]) -> str:
+    return json.dumps(payload, separators=(",", ":"))
+
+
+def _stdin(*payloads: dict[str, object]) -> str:
+    return "\n".join(_line(payload) for payload in payloads)
+
+
+def _run(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
+    stdout = StringIO()
+    stderr = StringIO()
+    with (
+        patch("sys.stdout", stdout),
+        patch("sys.stderr", stderr),
+        patch("sys.stdin", StringIO(stdin)),
+        patch("emails_assistant.cli._morning_now", return_value=_NOW),
+    ):
+        try:
+            main(argv)
+        except SystemExit as exc:
+            code = exc.code if exc.code is not None else 0
+            return code, stdout.getvalue(), stderr.getvalue()
+    return 0, stdout.getvalue(), stderr.getvalue()
+
+
+def _prior(directory: Path) -> int:
+    moment = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    path = directory / "2026-09-28.txt"
+    path.write_text("yesterday\n")
+    epoch = int(moment.timestamp())
+    os.utime(path, (epoch, epoch))
+    return epoch
+
+
+def _assert_failed(code: object, out: str, err: str, *forbidden: str) -> None:
+    assert code not in (0, None)
+    assert out.strip() == _FAILURE
+    blob = f"{out}\n{err}"
+    for item in forbidden:
+        assert item not in blob
+
+
+class _Exec:
+    def __init__(self, result: dict[str, object]) -> None:
+        self._result = result
+
+    def execute(self) -> dict[str, object]:
+        return self._result
+
+
+class _Messages:
+    def __init__(self, ids: list[str], *, error: Exception | None = None) -> None:
+        self.ids = ids
+        self.error = error
+        self.queries: list[str] = []
+        self._offset = 0
+
+    def list(self, **kwargs: object) -> _Exec:
+        if self.error is not None:
+            raise self.error
+        self.queries.append(str(kwargs["q"]))
+        page = self.ids[self._offset : self._offset + 50]
+        self._offset += len(page)
+        body: dict[str, object] = {"messages": [{"id": message_id} for message_id in page]}
+        if self._offset < len(self.ids):
+            body["nextPageToken"] = str(self._offset)
+        return _Exec(body)
+
+    def get(self, **kwargs: object) -> _Exec:
+        message_id = str(kwargs["id"])
+        return _Exec(
+            {
+                "id": message_id,
+                "snippet": "",
+                "payload": {
+                    "headers": [
+                        {"name": "Subject", "value": f"subject-{message_id}"},
+                        {"name": "From", "value": "owner@example.com"},
+                        {"name": "Date", "value": "Tue, 29 Sep 2026 10:00:00 +0000"},
+                    ]
+                },
+            }
+        )
+
+
+class _Service:
+    def __init__(self, messages: _Messages) -> None:
+        self._messages = messages
+
+    def users(self) -> _Service:
+        return self
+
+    def messages(self) -> _Messages:
+        return self._messages
+
+
+@pytest.fixture
+def morning_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("EMAILS_ASSISTANT_ACCOUNTS", "email1,email2")
+    monkeypatch.setenv("EMAILS_ASSISTANT_MORNING_DIR", str(tmp_path))
+    monkeypatch.setenv("EMAILS_ASSISTANT_SINCE_HOURS", "12")
+    if _SHM_DIR.exists():
+        for path in _SHM_DIR.glob("access-*.json"):
+            path.unlink()
+    yield tmp_path
+    if _SHM_DIR.exists():
+        for path in _SHM_DIR.glob("access-*.json"):
+            path.unlink()
+
+
+def _install_mailboxes(*boxes: _Messages) -> tuple[list[_Messages], object]:
+    pending = list(boxes)
+
+    def build(creds: object) -> _Service:
+        del creds
+        return _Service(pending.pop(0))
+
+    return list(boxes), patch("emails_assistant.gmail_api.build_gmail_service", side_effect=build)
+
+
+def test_two_mailboxes_become_one_file_and_a_count(morning_dir: Path) -> None:
+    first = _Messages(["a", "b"])
+    second = _Messages(["c", "d", "e"])
+    _boxes, patched = _install_mailboxes(first, second)
+
+    with patched:
+        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+
+    day = morning_dir / "2026-09-29.txt"
+    text = day.read_text(encoding="utf-8")
+    assert code == 0, err
+    assert out.strip() == "5"
+    assert "email1" in text
+    assert "email2" in text
+    assert _TOKEN not in text
+    assert _TOKEN_2 not in text
+    assert _TOKEN not in out
+    assert _TOKEN_2 not in out
+
+
+def test_query_uses_after_epoch_from_the_previous_file(morning_dir: Path) -> None:
+    epoch = _prior(morning_dir)
+    first = _Messages(["a"])
+    second = _Messages(["b"])
+    _boxes, patched = _install_mailboxes(first, second)
+
+    with patched:
+        code, out, _err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+
+    assert code == 0, out
+    assert first.queries == [f"after:{epoch}"]
+    assert second.queries == [f"after:{epoch}"]
+    assert all("newer_than" not in query for query in first.queries + second.queries)
+
+
+def test_one_hundred_twenty_messages_are_all_written(morning_dir: Path) -> None:
+    ids = [str(index) for index in range(120)]
+    first = _Messages(ids)
+    second = _Messages([])
+    _boxes, patched = _install_mailboxes(first, second)
+
+    with patched:
+        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+
+    text = (morning_dir / "2026-09-29.txt").read_text(encoding="utf-8")
+    assert code == 0, err
+    assert out.strip() == "120"
+    assert "subject-119" in text
+    assert "subject-99" in text
+    assert text.count("subject-") == 120
+
+
+def test_digest_prints_and_does_not_write_a_morning_file(morning_dir: Path) -> None:
+    from emails_assistant.cli import write_access_token_file
+
+    kept = morning_dir / "2026-09-28.txt"
+    kept.write_text("keep\n")
+    write_access_token_file("email1", _line(_payload(_TOKEN)))
+    write_access_token_file("email2", _line(_payload(_TOKEN_2)))
+    summary = MessageSummary(id="1", subject="hello", sender="a@example.com", date="", snippet="")
+
+    with patch("emails_assistant.cli.list_recent_messages", return_value=[summary]):
+        code, out, err = _run(["digest"])
+
+    assert code == 0, err
+    assert "last 12h" in out
+    assert "hello" in out
+    assert kept.read_text(encoding="utf-8") == "keep\n"
+    assert [path.name for path in morning_dir.iterdir()] == ["2026-09-28.txt"]
+
+
+def test_second_alias_failure_writes_no_file_and_hides_the_subject(morning_dir: Path) -> None:
+    first = _Messages(["a"])
+    second = _Messages([], error=RuntimeError(_SUBJECT))
+    _boxes, patched = _install_mailboxes(first, second)
+
+    with patched:
+        code, out, err = _run(["morning"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+
+    _assert_failed(code, out, err, _SUBJECT, _TOKEN, _TOKEN_2)
+    assert not (morning_dir / "2026-09-29.txt").exists()
+
+
+def test_refresh_token_on_stdin_writes_no_file(morning_dir: Path) -> None:
+    code, out, err = _run(
+        ["morning"],
+        stdin=_line(_payload(_TOKEN, refresh_token=_REFRESH, subject=_SUBJECT)),
+    )
+
+    _assert_failed(code, out, err, _REFRESH, _TOKEN, _SUBJECT)
+    assert not (morning_dir / "2026-09-29.txt").exists()
+    assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True
+
+
+def test_payload_count_must_match_aliases(morning_dir: Path) -> None:
+    code, out, err = _run(
+        ["morning"],
+        stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _payload("ya29-extra")),
+    )
+
+    _assert_failed(code, out, err, _TOKEN, _TOKEN_2, "ya29-extra")
+    assert not (morning_dir / "2026-09-29.txt").exists()
+    assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True
