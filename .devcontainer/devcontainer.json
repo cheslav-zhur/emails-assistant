@@ -5,10 +5,19 @@
     "TZ": "Asia/Ho_Chi_Minh",
     "SSH_AUTH_SOCK": "/ssh-agent"
   },
+  "remoteEnv": {
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
   "mounts": [
     "source=/run/host-services/ssh-auth.sock,target=/ssh-agent,type=bind",
     "source=emails-assistant-pip-cache,target=/home/vscode/.cache/pip,type=volume"
   ],
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
