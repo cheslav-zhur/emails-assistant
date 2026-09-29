@@ -9,8 +9,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
-DEFAULT_KEYCHAIN_SERVICE = "emails-assistant"
-OAUTH_CLIENT_ACCOUNT = "oauth-client"
 
 
 def load_dotenv(path: Path | None = None) -> None:
@@ -30,19 +28,9 @@ def load_dotenv(path: Path | None = None) -> None:
     logger.debug("Loaded env file %s", env_path)
 
 
-def keychain_service() -> str:
-    return os.environ.get(
-        "EMAILS_ASSISTANT_KEYCHAIN_SERVICE", DEFAULT_KEYCHAIN_SERVICE
-    )
-
-
 def known_aliases() -> tuple[str, ...]:
     raw = os.environ.get("EMAILS_ASSISTANT_ACCOUNTS", "email1,email2")
     return tuple(a.strip() for a in raw.split(",") if a.strip())
-
-
-def token_account(alias: str) -> str:
-    return f"token/{alias}"
 
 
 def since_hours(default: int = 12) -> int:

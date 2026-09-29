@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
+import stat
 import sys
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
+from google.oauth2.credentials import Credentials
+
 from emails_assistant import config
-from emails_assistant.auth import load_credentials, login
+from emails_assistant.auth import (
+    ACCESS_RERUN_NOTICE,
+    CredentialError,
+    load_access_credentials,
+    login,
+)
 from emails_assistant.digest import format_digest, format_search, format_show
 from emails_assistant.gmail_api import (
     get_message,
@@ -16,33 +27,74 @@ from emails_assistant.gmail_api import (
     search_messages,
     smoke_list_one,
 )
-from emails_assistant.keychain import KeychainError
+
+ACCESS_TOKEN_DIR = Path("/dev/shm/emails-assistant")
+_QUIET_LOGGERS = (
+    "google",
+    "googleapiclient",
+    "google_auth_httplib2",
+    "httplib2",
+    "urllib3",
+)
 
 
-def _token_file_for(
-    alias: str,
-    *,
-    token_file: Path | None,
-    token_dir: Path | None,
-) -> Path | None:
-    if token_file is not None:
-        return token_file
-    if token_dir is not None:
-        return token_dir / f"token-{alias}.json"
-    return None
+def access_token_path(alias: str) -> Path:
+    config.resolve_alias(alias)
+    return ACCESS_TOKEN_DIR / f"access-{alias}.json"
 
 
-def _add_token_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--token-file",
-        type=Path,
-        help="Token JSON path (skip Keychain)",
+def _under_workspace(path: Path) -> bool:
+    return path.resolve().is_relative_to(Path.cwd().resolve())
+
+
+def load_access_token_file(path: Path) -> Credentials:
+    """Load a bearer credential. Rejects workspace paths and refresh material."""
+    if _under_workspace(path):
+        raise CredentialError(ACCESS_RERUN_NOTICE)
+    if not path.is_file():
+        raise CredentialError(ACCESS_RERUN_NOTICE)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise CredentialError(ACCESS_RERUN_NOTICE) from None
+    return load_access_credentials(payload)
+
+
+def write_access_token_file(alias: str, raw: str) -> Path:
+    """Create the tmpfs access file at mode 0600, then write the payload."""
+    path = access_token_path(alias)
+    if _under_workspace(path):
+        raise CredentialError(ACCESS_RERUN_NOTICE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
+            raise CredentialError(ACCESS_RERUN_NOTICE)
+        os.write(fd, raw.encode("utf-8"))
+    finally:
+        os.close(fd)
+    return path
+
+
+def _mail_credentials(alias: str) -> Credentials:
+    try:
+        return load_access_token_file(access_token_path(alias))
+    except CredentialError:
+        raise SystemExit(ACCESS_RERUN_NOTICE) from None
+
+
+def _configure_logging(verbose: bool) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
     )
-    parser.add_argument(
-        "--token-dir",
-        type=Path,
-        help="Dir with token-<alias>.json files (Dev Container bridge)",
-    )
+    if verbose:
+        for name in _QUIET_LOGGERS:
+            logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -61,19 +113,9 @@ def main(argv: list[str] | None = None) -> None:
 
     login_p = sub.add_parser(
         "login",
-        help="Browser OAuth; store refresh token (Keychain or --token-file)",
+        help="Browser OAuth; mailbox token JSON on stdout",
     )
     login_p.add_argument("alias", help="Account alias (email1 or email2)")
-    login_p.add_argument(
-        "--client-file",
-        type=Path,
-        help="OAuth client JSON (skip Keychain read; for Dev Container bridge)",
-    )
-    login_p.add_argument(
-        "--token-file",
-        type=Path,
-        help="Write token JSON here (skip Keychain write)",
-    )
     login_p.add_argument(
         "--oauth-port",
         type=int,
@@ -83,7 +125,7 @@ def main(argv: list[str] | None = None) -> None:
     login_p.add_argument(
         "--no-browser",
         action="store_true",
-        help="Do not open a browser; print the URL instead",
+        help="Do not open a browser; print the URL on stderr",
     )
 
     smoke_p = sub.add_parser(
@@ -91,11 +133,6 @@ def main(argv: list[str] | None = None) -> None:
         help="List one message via Gmail API",
     )
     smoke_p.add_argument("alias", help="Account alias (email1 or email2)")
-    smoke_p.add_argument(
-        "--token-file",
-        type=Path,
-        help="Read/write token JSON here (skip Keychain)",
-    )
 
     digest_p = sub.add_parser(
         "digest",
@@ -113,16 +150,6 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Lookback hours (default: EMAILS_ASSISTANT_SINCE_HOURS or 12)",
     )
-    digest_p.add_argument(
-        "--token-file",
-        type=Path,
-        help="Token JSON for a single --alias (skip Keychain)",
-    )
-    digest_p.add_argument(
-        "--token-dir",
-        type=Path,
-        help="Dir with token-<alias>.json files (Dev Container bridge)",
-    )
 
     search_p = sub.add_parser(
         "search",
@@ -131,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
     search_p.add_argument("alias", help="Account alias (email1 or email2)")
     search_p.add_argument(
         "query",
-        help="Gmail search query (e.g. 'from:heroku newer_than:1d')",
+        help="Gmail search query (e.g. 'from: heroku newer_than:1d')",
     )
     search_p.add_argument(
         "--max",
@@ -140,7 +167,6 @@ def main(argv: list[str] | None = None) -> None:
         dest="max_results",
         help="Max messages (default 20)",
     )
-    _add_token_args(search_p)
 
     show_p = sub.add_parser(
         "show",
@@ -148,31 +174,21 @@ def main(argv: list[str] | None = None) -> None:
     )
     show_p.add_argument("alias", help="Account alias (email1 or email2)")
     show_p.add_argument("message_id", help="Gmail message id")
-    _add_token_args(show_p)
 
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    _configure_logging(args.verbose)
 
     try:
         if args.command == "login":
-            login(
+            creds = login(
                 args.alias,
-                client_file=args.client_file,
-                token_file=args.token_file,
+                client_json=sys.stdin.read(),
                 oauth_port=args.oauth_port,
                 open_browser=not args.no_browser,
             )
-            dest = (
-                str(args.token_file)
-                if args.token_file
-                else f"Keychain token/{args.alias}"
-            )
-            print(f"login ok: {args.alias} → {dest}")
+            sys.stdout.write(creds.to_json())
         elif args.command == "smoke":
-            creds = load_credentials(args.alias, token_file=args.token_file)
+            creds = _mail_credentials(args.alias)
             info = smoke_list_one(creds)
             if not info["id"]:
                 print(f"smoke ok: {args.alias} (no messages)")
@@ -187,19 +203,12 @@ def main(argv: list[str] | None = None) -> None:
             if hours < 1:
                 raise SystemExit("--hours must be >= 1")
             aliases = tuple(args.aliases) if args.aliases else config.known_aliases()
-            if args.token_file is not None and len(aliases) != 1:
-                raise SystemExit("--token-file requires exactly one --alias")
             for alias in aliases:
                 config.resolve_alias(alias)
 
             sections: list = []
             for alias in aliases:
-                token_path = _token_file_for(
-                    alias,
-                    token_file=args.token_file,
-                    token_dir=args.token_dir,
-                )
-                creds = load_credentials(alias, token_file=token_path)
+                creds = _mail_credentials(alias)
                 messages = list_recent_messages(creds, hours=hours)
                 sections.append((alias, messages))
 
@@ -207,13 +216,7 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "search":
             if args.max_results < 1:
                 raise SystemExit("--max must be >= 1")
-            config.resolve_alias(args.alias)
-            token_path = _token_file_for(
-                args.alias,
-                token_file=args.token_file,
-                token_dir=args.token_dir,
-            )
-            creds = load_credentials(args.alias, token_file=token_path)
+            creds = _mail_credentials(args.alias)
             messages = search_messages(
                 creds,
                 query=args.query,
@@ -224,16 +227,12 @@ def main(argv: list[str] | None = None) -> None:
                 end="",
             )
         elif args.command == "show":
-            config.resolve_alias(args.alias)
-            token_path = _token_file_for(
-                args.alias,
-                token_file=args.token_file,
-                token_dir=args.token_dir,
-            )
-            creds = load_credentials(args.alias, token_file=token_path)
+            creds = _mail_credentials(args.alias)
             detail = get_message(creds, args.message_id)
             print(format_show(args.alias, detail), end="")
-    except KeychainError as exc:
+    except RefreshError:
+        raise SystemExit(ACCESS_RERUN_NOTICE) from None
+    except CredentialError as exc:
         logging.error("%s", exc)
         sys.exit(1)
     except SystemExit:
