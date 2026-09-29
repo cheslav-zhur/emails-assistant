@@ -12,15 +12,18 @@ from google.auth import _helpers
 from google.oauth2.credentials import Credentials
 
 from emails_assistant import config
-from emails_assistant.keychain import KeychainError
 
 logger = logging.getLogger(__name__)
 
 ACCESS_RERUN_NOTICE = "Access token missing or rejected. Run the host script again."
 
 
+class CredentialError(RuntimeError):
+    """Caller-facing failure while accepting credentials."""
+
+
 def _reject_access_payload() -> NoReturn:
-    raise KeychainError(ACCESS_RERUN_NOTICE)
+    raise CredentialError(ACCESS_RERUN_NOTICE)
 
 
 def _parse_access_expiry(raw: object) -> datetime:
@@ -68,11 +71,11 @@ def _parse_client_json(raw: str) -> dict[str, Any]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise KeychainError(
+        raise CredentialError(
             "OAuth client JSON is invalid (expected Google Desktop client file)."
         ) from exc
     if "installed" not in data and "web" not in data:
-        raise KeychainError(
+        raise CredentialError(
             "OAuth client JSON must contain 'installed' or 'web'."
         )
     return data

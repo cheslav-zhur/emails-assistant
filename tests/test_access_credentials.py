@@ -19,9 +19,12 @@ from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from google_auth_httplib2 import AuthorizedHttp
 
-from emails_assistant.auth import ACCESS_RERUN_NOTICE, load_access_credentials
+from emails_assistant.auth import (
+    ACCESS_RERUN_NOTICE,
+    CredentialError,
+    load_access_credentials,
+)
 from emails_assistant.cli import main
-from emails_assistant.keychain import KeychainError
 
 _SHM_DIR = Path("/dev/shm/emails-assistant")
 
@@ -124,37 +127,37 @@ class LoadAccessCredentialsTest(unittest.TestCase):
 
     def test_past_expiry_raises_before_http(self) -> None:
         http = _RecordingHttp()
-        with self.assertRaises(KeychainError):
+        with self.assertRaises(CredentialError):
             load_access_credentials(_safe_payload(expiry=_expiry_z(timedelta(hours=-1))))
         self.assertEqual(http.uris, [])
 
     def test_expiry_inside_refresh_window_raises_before_http(self) -> None:
         http = _RecordingHttp()
         inside = _helpers.REFRESH_THRESHOLD - timedelta(seconds=30)
-        with self.assertRaises(KeychainError):
+        with self.assertRaises(CredentialError):
             load_access_credentials(_safe_payload(expiry=_expiry_z(inside)))
         self.assertEqual(http.uris, [])
 
     def test_refresh_token_rejected_before_credential(self) -> None:
-        with self.assertRaises(KeychainError) as caught:
+        with self.assertRaises(CredentialError) as caught:
             load_access_credentials(_safe_payload(refresh_token=_REFRESH))
         self.assertNotIn(_REFRESH, str(caught.exception))
         self.assertNotIn(_TOKEN, str(caught.exception))
 
     def test_client_secret_rejected_before_credential(self) -> None:
-        with self.assertRaises(KeychainError) as caught:
+        with self.assertRaises(CredentialError) as caught:
             load_access_credentials(_safe_payload(client_secret=_CLIENT_SECRET))
         self.assertNotIn(_CLIENT_SECRET, str(caught.exception))
 
     def test_missing_expiry_rejected(self) -> None:
         payload = _safe_payload()
         del payload["expiry"]
-        with self.assertRaises(KeychainError) as caught:
+        with self.assertRaises(CredentialError) as caught:
             load_access_credentials(payload)
         self.assertNotIn(_TOKEN, str(caught.exception))
 
     def test_empty_access_token_rejected(self) -> None:
-        with self.assertRaises(KeychainError):
+        with self.assertRaises(CredentialError):
             load_access_credentials(_safe_payload(access_token=""))
 
 
@@ -302,7 +305,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         workspace_file = Path.cwd() / "access-email1.json"
         workspace_file.write_text(json.dumps(_safe_payload()), encoding="utf-8")
         try:
-            with self.assertRaises(KeychainError) as caught:
+            with self.assertRaises(CredentialError) as caught:
                 load_access_token_file(workspace_file)
             self.assertNotIn("access-email1.json", str(caught.exception))
             self.assertNotIn(_TOKEN, str(caught.exception))

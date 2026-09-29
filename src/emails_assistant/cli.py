@@ -16,6 +16,7 @@ from google.oauth2.credentials import Credentials
 from emails_assistant import config
 from emails_assistant.auth import (
     ACCESS_RERUN_NOTICE,
+    CredentialError,
     load_access_credentials,
     login,
 )
@@ -26,7 +27,6 @@ from emails_assistant.gmail_api import (
     search_messages,
     smoke_list_one,
 )
-from emails_assistant.keychain import KeychainError
 
 ACCESS_TOKEN_DIR = Path("/dev/shm/emails-assistant")
 _QUIET_LOGGERS = (
@@ -50,13 +50,13 @@ def _under_workspace(path: Path) -> bool:
 def load_access_token_file(path: Path) -> Credentials:
     """Load a bearer credential. Rejects workspace paths and refresh material."""
     if _under_workspace(path):
-        raise KeychainError(ACCESS_RERUN_NOTICE)
+        raise CredentialError(ACCESS_RERUN_NOTICE)
     if not path.is_file():
-        raise KeychainError(ACCESS_RERUN_NOTICE)
+        raise CredentialError(ACCESS_RERUN_NOTICE)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
-        raise KeychainError(ACCESS_RERUN_NOTICE) from None
+        raise CredentialError(ACCESS_RERUN_NOTICE) from None
     return load_access_credentials(payload)
 
 
@@ -64,7 +64,7 @@ def write_access_token_file(alias: str, raw: str) -> Path:
     """Create the tmpfs access file at mode 0600, then write the payload."""
     path = access_token_path(alias)
     if _under_workspace(path):
-        raise KeychainError(ACCESS_RERUN_NOTICE)
+        raise CredentialError(ACCESS_RERUN_NOTICE)
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
     if hasattr(os, "O_NOFOLLOW"):
@@ -73,7 +73,7 @@ def write_access_token_file(alias: str, raw: str) -> Path:
     try:
         os.fchmod(fd, 0o600)
         if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
-            raise KeychainError(ACCESS_RERUN_NOTICE)
+            raise CredentialError(ACCESS_RERUN_NOTICE)
         os.write(fd, raw.encode("utf-8"))
     finally:
         os.close(fd)
@@ -83,7 +83,7 @@ def write_access_token_file(alias: str, raw: str) -> Path:
 def _mail_credentials(alias: str) -> Credentials:
     try:
         return load_access_token_file(access_token_path(alias))
-    except KeychainError:
+    except CredentialError:
         raise SystemExit(ACCESS_RERUN_NOTICE) from None
 
 
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> None:
             print(format_show(args.alias, detail), end="")
     except RefreshError:
         raise SystemExit(ACCESS_RERUN_NOTICE) from None
-    except KeychainError as exc:
+    except CredentialError as exc:
         logging.error("%s", exc)
         sys.exit(1)
     except SystemExit:
