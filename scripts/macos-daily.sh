@@ -43,6 +43,36 @@ today_file() {
   printf '%s/%s.txt' "$(daily_dir)" "$(day_stamp)"
 }
 
+image_stamp() {
+  if [[ -n "${EMAILS_ASSISTANT_IMAGE_STAMP:-}" ]]; then
+    printf '%s' "$EMAILS_ASSISTANT_IMAGE_STAMP"
+    return
+  fi
+  printf '%s' "$HOME/Library/Application Support/emails-assistant/daily-image.sha256"
+}
+
+requirements_hash() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$ROOT/requirements.txt" | awk '{print $1}'
+    return
+  fi
+  sha256sum "$ROOT/requirements.txt" | awk '{print $1}'
+}
+
+ensure_image() {
+  local stamp hash
+  stamp="$(image_stamp)"
+  hash="$(requirements_hash)"
+  if docker_cmd image inspect "$IMAGE" >/dev/null 2>&1 \
+    && [[ -f "$stamp" ]] \
+    && [[ "$(cat "$stamp")" == "$hash" ]]; then
+    return 0
+  fi
+  docker_cmd build -t "$IMAGE" -f "$ROOT/Dockerfile" "$ROOT"
+  mkdir -p "$(dirname "$stamp")"
+  printf '%s\n' "$hash" >"$stamp"
+}
+
 docker_cmd() {
   if [[ -n "${EMAILS_ASSISTANT_DOCKER:-}" ]]; then
     "$EMAILS_ASSISTANT_DOCKER" "$@"
@@ -116,6 +146,7 @@ try_once() {
   if ! docker_cmd info >/dev/null 2>&1; then
     return 1
   fi
+  ensure_image || return 1
   payload="$(one_shot)" || return 1
   if [[ -z "$payload" ]]; then
     return 1
@@ -153,4 +184,8 @@ main() {
   done
 }
 
-main "$@"
+if [[ "${1:-}" == "build-image" ]]; then
+  ensure_image
+else
+  main "$@"
+fi

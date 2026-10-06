@@ -68,6 +68,15 @@ if [[ "$1" == "info" ]]; then
   fi
   exit 0
 fi
+if [[ "$1" == "image" ]]; then
+  if [[ -f "$dir/image_ready" ]]; then
+    exit 0
+  fi
+  exit 1
+fi
+if [[ "$1" == "build" ]]; then
+  exit 0
+fi
 if [[ "$1" == "exec" ]]; then
   exit 1
 fi
@@ -120,6 +129,7 @@ run_agent() {
   EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
   EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
   EMAILS_ASSISTANT_DAILY_DIR="$DAY_DIR" \
+  EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
   EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
   "$SCRIPT"
 }
@@ -150,6 +160,7 @@ reset_io "2026-09-29 10:30:00"
 arm_success
 run_agent
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "expected one one-shot"
+[[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 1 ]] || fail "missing image build"
 [[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "count banner: $(cat "$IO_DIR/banners")"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "host replaced the day file"
 [[ "$(cat "$IO_DIR/docker_stdin")" == *"access_token"* ]] || fail "token was not piped to docker"
@@ -167,6 +178,19 @@ run_agent
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "keep" ]] || fail "second run replaced the file"
 [[ ! -s "$IO_DIR/banners" ]] || fail "second banner"
 [[ ! -s "$IO_DIR/shots" ]] || fail "second one-shot"
+
+# Image already matches requirements.txt: do not build again.
+reset_io "2026-09-29 10:30:00"
+arm_success
+: >"$IO_DIR/image_ready"
+if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$ROOT/requirements.txt" | awk '{print $1}' >"$IO_DIR/stamp"
+else
+  sha256sum "$ROOT/requirements.txt" | awk '{print $1}' >"$IO_DIR/stamp"
+fi
+run_agent
+[[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 0 ]] || fail "rebuilt a current image"
+[[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "current image did not run"
 
 # Docker is down at 08:00, then up 15 minutes later.
 reset_io "2026-09-29 08:00:00"

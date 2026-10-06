@@ -49,19 +49,13 @@ Each try calls `one-shot` only when Docker is running. That stdout stays in memo
 
 The banner is `osascript` `display notification`. A success shows only the count. A failure shows `Daily digest did not run.` once per failure streak. The notification does not open the file.
 
-Build the image once, and again when `requirements.txt` changes. The 08:00 run does not build it:
+On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:daily`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
 
 ```bash
-docker build -t emails-assistant:daily -f Dockerfile .
+scripts/macos-install-daily-agent.sh
 ```
 
-Copy the agent into this clone (`REPLACE_WITH_REPO` in the plist is the repo root):
-
-```bash
-cp scripts/com.emails-assistant.daily.plist ~/Library/LaunchAgents/
-# Edit ProgramArguments to the absolute path of scripts/macos-daily.sh
-launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.emails-assistant.daily.plist
-```
+The 08:00 run builds that image only when it is missing or `requirements.txt` has changed. Other mornings do not rebuild it.
 
 Day files land in `~/Library/Application Support/emails-assistant/digests` unless `EMAILS_ASSISTANT_DAILY_DIR` is set.
 
