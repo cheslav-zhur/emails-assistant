@@ -1,4 +1,4 @@
-"""CLI: login, smoke, digest, search, show."""
+"""CLI: login, smoke, digest, daily, search, show."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import logging
 import os
 import stat
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from google.auth.exceptions import RefreshError
@@ -27,6 +28,14 @@ from emails_assistant.gmail_api import (
     search_messages,
     smoke_list_one,
 )
+from emails_assistant.daily import (
+    DailyMessage,
+    MailboxRead,
+    decide_daily,
+    resolve_daily_dir,
+)
+
+_DAILY_FAILURE = "Daily digest did not run."
 
 ACCESS_TOKEN_DIR = Path("/dev/shm/emails-assistant")
 _QUIET_LOGGERS = (
@@ -85,6 +94,86 @@ def _mail_credentials(alias: str) -> Credentials:
         return load_access_token_file(access_token_path(alias))
     except CredentialError:
         raise SystemExit(ACCESS_RERUN_NOTICE) from None
+
+
+def _daily_now() -> datetime:
+    return datetime.now().astimezone()
+
+
+def _daily_fail() -> None:
+    print(_DAILY_FAILURE)
+    raise SystemExit(1)
+
+
+def _run_daily() -> None:
+    """Read both mailboxes, then write today's file and print only the count."""
+    aliases = config.known_aliases()
+    for alias in aliases:
+        config.resolve_alias(alias)
+    lines = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+    if len(lines) != len(aliases):
+        _daily_fail()
+    payloads: list[dict[str, object]] = []
+    for line in lines:
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            _daily_fail()
+        if not isinstance(payload, dict):
+            _daily_fail()
+        payloads.append(payload)
+    try:
+        credentials = [load_access_credentials(payload) for payload in payloads]
+    except CredentialError:
+        _daily_fail()
+
+    now = _daily_now()
+    directory = resolve_daily_dir()
+    preview = decide_daily(
+        daily_dir=directory,
+        now=now,
+        mailboxes=tuple(MailboxRead(alias=alias) for alias in aliases),
+    )
+    if preview.path.is_file():
+        return
+
+    for alias, line in zip(aliases, lines, strict=True):
+        write_access_token_file(alias, line)
+
+    epoch = int(preview.window_start.timestamp())
+    query = f"after:{epoch}"
+    reads: list[MailboxRead] = []
+    try:
+        for alias, creds in zip(aliases, credentials, strict=True):
+            summaries = search_messages(creds, query=query, max_results=None)
+            # ``after:`` already dropped mail at the previous file's epoch.
+            messages = tuple(
+                DailyMessage(
+                    arrived_at=preview.window_start + timedelta(seconds=1),
+                    subject=item.subject,
+                    sender=item.sender,
+                    date=item.date,
+                    snippet=item.snippet,
+                )
+                for item in summaries
+            )
+            reads.append(MailboxRead(alias=alias, messages=messages))
+    except Exception:
+        _daily_fail()
+
+    decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads)
+    if not decision.write or decision.notice is None:
+        _daily_fail()
+    decision.path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(decision.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return
+    try:
+        os.write(fd, decision.text.encode("utf-8"))
+    finally:
+        os.close(fd)
+    print(decision.notice)
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -151,6 +240,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Lookback hours (default: EMAILS_ASSISTANT_SINCE_HOURS or 12)",
     )
 
+    sub.add_parser(
+        "daily",
+        help="Write today's digest file and print the message count",
+    )
+
     search_p = sub.add_parser(
         "search",
         help="Search one mailbox with a Gmail query",
@@ -213,6 +307,8 @@ def main(argv: list[str] | None = None) -> None:
                 sections.append((alias, messages))
 
             print(format_digest(hours=hours, sections=sections), end="")
+        elif args.command == "daily":
+            _run_daily()
         elif args.command == "search":
             if args.max_results < 1:
                 raise SystemExit("--max must be >= 1")

@@ -15,7 +15,7 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** Mail commands in Linux receive only a short-lived Gmail access token. The refresh token and OAuth client secret stay in macOS Keychain. The host refreshes each mailbox access token and passes only those tokens in. The container does not call the token endpoint on the mail path.
-- **Authority:** This Product Contract wins on behavior. Key Technical Decisions win on mechanism inside those requirements. `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the credential-export steps in `docs/plans/2026-09-28-005-feat-local-morning-digest-plan.md` are not this contract.
+- **Authority:** This Product Contract wins on behavior. Key Technical Decisions win on mechanism inside those requirements. `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the credential-export steps in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md` are not this contract.
 - **Stop:** Do not build the morning file, banner, or timer. Do not install packages. Do not put a refresh token or client secret in the container on a mail run. Do not rewrite plan 005 or plan 003 in place.
 - **Execution:** code. Tail ownership stays with the executor after this plan.
 
@@ -130,7 +130,7 @@ Python runs in Linux, and Linux cannot open macOS Keychain. The current bridge c
 
 ### Scope Boundaries
 
-This plan replaces the credential inject described in `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the Keychain-to-directory export in `docs/plans/2026-09-28-005-feat-local-morning-digest-plan.md`. Those files stay as they are. Do not implement their inject.
+This plan replaces the credential inject described in `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the Keychain-to-directory export in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md`. Those files stay as they are. Do not implement their inject.
 
 Out of scope:
 

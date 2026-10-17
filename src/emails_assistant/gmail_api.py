@@ -125,24 +125,31 @@ def search_messages(
     creds: Credentials,
     *,
     query: str,
-    max_results: int = 20,
+    max_results: int | None = 20,
 ) -> list[MessageSummary]:
-    """List message summaries matching a Gmail search query."""
+    """List message summaries matching a Gmail search query.
+
+    ``max_results=None`` pages until Gmail has no further hit in the query.
+    """
     service = build_gmail_service(creds)
     summaries: list[MessageSummary] = []
     page_token: str | None = None
 
     while True:
-        remaining = max_results - len(summaries)
-        if remaining <= 0:
-            break
+        if max_results is None:
+            page_size = 50
+        else:
+            remaining = max_results - len(summaries)
+            if remaining <= 0:
+                break
+            page_size = min(50, remaining)
         listing = (
             service.users()
             .messages()
             .list(
                 userId="me",
                 q=query,
-                maxResults=min(50, remaining),
+                maxResults=page_size,
                 pageToken=page_token,
             )
             .execute()
@@ -169,11 +176,13 @@ def search_messages(
                     snippet=(msg.get("snippet") or "").strip(),
                 )
             )
-            if len(summaries) >= max_results:
+            if max_results is not None and len(summaries) >= max_results:
                 break
 
         page_token = listing.get("nextPageToken")
-        if not page_token or len(summaries) >= max_results:
+        if not page_token:
+            break
+        if max_results is not None and len(summaries) >= max_results:
             break
 
     logger.info("Search fetched %s messages (q=%s)", len(summaries), query)
