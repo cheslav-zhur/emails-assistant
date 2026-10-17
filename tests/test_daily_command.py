@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
@@ -13,6 +15,7 @@ import pytest
 from google.auth import _helpers
 
 from emails_assistant.cli import main
+from emails_assistant.daily import MailboxRead, render_summary_input
 from emails_assistant.gmail_api import MessageSummary
 
 _SHM_DIR = Path("/dev/shm/emails-assistant")
@@ -86,10 +89,20 @@ class _Exec:
 
 
 class _Messages:
-    def __init__(self, ids: list[str], *, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        ids: list[str],
+        *,
+        error: Exception | None = None,
+        bodies: dict[str, str] | None = None,
+        snippets: dict[str, str] | None = None,
+    ) -> None:
         self.ids = ids
         self.error = error
+        self.bodies = bodies or {}
+        self.snippets = snippets or {}
         self.queries: list[str] = []
+        self.formats: list[str] = []
         self._offset = 0
 
     def list(self, **kwargs: object) -> _Exec:
@@ -105,17 +118,25 @@ class _Messages:
 
     def get(self, **kwargs: object) -> _Exec:
         message_id = str(kwargs["id"])
+        self.formats.append(str(kwargs.get("format")))
+        payload: dict[str, object] = {
+            "headers": [
+                {"name": "Subject", "value": f"subject-{message_id}"},
+                {"name": "From", "value": "owner@example.com"},
+                {"name": "Date", "value": "Tue, 29 Sep 2026 10:00:00 +0000"},
+            ]
+        }
+        plain = self.bodies.get(message_id)
+        if plain is not None:
+            payload["mimeType"] = "text/plain"
+            payload["body"] = {
+                "data": base64.urlsafe_b64encode(plain.encode()).decode(),
+            }
         return _Exec(
             {
                 "id": message_id,
-                "snippet": "",
-                "payload": {
-                    "headers": [
-                        {"name": "Subject", "value": f"subject-{message_id}"},
-                        {"name": "From", "value": "owner@example.com"},
-                        {"name": "Date", "value": "Tue, 29 Sep 2026 10:00:00 +0000"},
-                    ]
-                },
+                "snippet": self.snippets.get(message_id, ""),
+                "payload": payload,
             }
         )
 
@@ -173,6 +194,52 @@ def test_two_mailboxes_become_one_file_and_a_count(daily_dir: Path) -> None:
     assert _TOKEN_2 not in text
     assert _TOKEN not in out
     assert _TOKEN_2 not in out
+
+
+def test_daily_reads_the_plain_body_into_the_model_input(daily_dir: Path) -> None:
+    first = _Messages(
+        ["a"],
+        bodies={"a": "plain body"},
+        snippets={"a": "snippet-to-skip"},
+    )
+    second = _Messages(["b"], snippets={"b": "only snippet"})
+    _boxes, patched = _install_mailboxes(first, second)
+    captured: list[str] = []
+
+    def _capture(mailboxes: Sequence[MailboxRead], *, window_start: datetime) -> str:
+        text = render_summary_input(mailboxes, window_start=window_start)
+        captured.append(text)
+        return text
+
+    with patched, patch("emails_assistant.cli.render_summary_input", side_effect=_capture):
+        code, out, err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
+
+    day = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
+    assert code == 0, err
+    assert out.strip() == "2"
+    assert first.formats == ["full"]
+    assert second.formats == ["full"]
+    assert captured == [
+        "\n".join(
+            [
+                "email1",
+                "Subject: subject-a",
+                "From: owner@example.com",
+                "Date: Tue, 29 Sep 2026 10:00:00 +0000",
+                "plain body",
+                "",
+                "email2",
+                "Subject: subject-b",
+                "From: owner@example.com",
+                "Date: Tue, 29 Sep 2026 10:00:00 +0000",
+                "only snippet",
+            ]
+        )
+    ]
+    assert "snippet-to-skip" not in captured[0]
+    assert "subject-a" in day
+    assert "subject-b" in day
+    assert _TOKEN not in captured[0]
 
 
 def test_query_uses_after_epoch_from_the_previous_file(daily_dir: Path) -> None:

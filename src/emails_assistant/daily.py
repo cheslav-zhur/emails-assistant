@@ -16,6 +16,10 @@ class DailyMessage:
     sender: str
     date: str = ""
     snippet: str = ""
+    body: str = ""
+
+
+SUMMARY_MISS = "Summary did not run."
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,7 @@ class DailyDecision:
     notice: str | None
     window_start: datetime
     path: Path
+    failure: str | None = None
 
 
 def resolve_daily_dir(
@@ -53,8 +58,14 @@ def decide_daily(
     daily_dir: Path,
     now: datetime,
     mailboxes: Sequence[MailboxRead],
+    summary: str | None = None,
 ) -> DailyDecision:
-    """Return whether to write today's file, its text, and a count-only notice."""
+    """Return whether to write today's file, its text, and a count-only notice.
+
+    ``summary=None`` keeps the message list. A non-blank summary replaces that
+    list and is not checked for length. A blank summary with new mail writes
+    nothing. No new mail still writes the quiet file and ignores ``summary``.
+    """
     day_path = daily_dir / f"{now.date().isoformat()}.txt"
     start = _window_start(daily_dir, day_path, now)
     if day_path.is_file() or any(box.error for box in mailboxes):
@@ -73,14 +84,68 @@ def decide_daily(
         kept = tuple(message for message in box.messages if _as_utc(message.arrived_at) > start)
         total += len(kept)
         kept_sections.append((box.alias, kept))
+    if total == 0:
+        return DailyDecision(
+            write=True,
+            text=_format_daily(day=day_path.stem, sections=kept_sections, count=0),
+            count=0,
+            notice="0",
+            window_start=start,
+            path=day_path,
+        )
+    if summary is None:
+        return DailyDecision(
+            write=True,
+            text=_format_daily(day=day_path.stem, sections=kept_sections, count=total),
+            count=total,
+            notice=str(total),
+            window_start=start,
+            path=day_path,
+        )
+    text = summary.strip()
+    if not text:
+        return DailyDecision(
+            write=False,
+            text="",
+            count=None,
+            notice=None,
+            window_start=start,
+            path=day_path,
+            failure=SUMMARY_MISS,
+        )
     return DailyDecision(
         write=True,
-        text=_format_daily(day=day_path.stem, sections=kept_sections, count=total),
+        text=_format_summary(day=day_path.stem, summary=text),
         count=total,
         notice=str(total),
         window_start=start,
         path=day_path,
     )
+
+
+def render_summary_input(
+    mailboxes: Sequence[MailboxRead],
+    *,
+    window_start: datetime,
+) -> str:
+    """Text for the model: alias, subject, sender, date, and body or snippet."""
+    blocks: list[str] = []
+    for box in mailboxes:
+        for message in box.messages:
+            if _as_utc(message.arrived_at) <= window_start:
+                continue
+            lines = [
+                box.alias,
+                f"Subject: {message.subject}",
+                f"From: {message.sender}",
+            ]
+            if message.date:
+                lines.append(f"Date: {message.date}")
+            body = message.body.strip() or message.snippet.strip()
+            if body:
+                lines.append(body)
+            blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def _window_start(directory: Path, today: Path, now: datetime) -> datetime:
@@ -122,6 +187,10 @@ def _format_daily(
         header.extend(["There were no new messages.", ""])
     body = [_format_section(alias, messages) for alias, messages in sections]
     return "\n".join(header + body).rstrip() + "\n"
+
+
+def _format_summary(*, day: str, summary: str) -> str:
+    return f"# emails-assistant daily digest — {day}\n\n{summary}\n"
 
 
 def _format_section(alias: str, messages: tuple[DailyMessage, ...]) -> str:

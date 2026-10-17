@@ -21,6 +21,7 @@ class MessageSummary:
     sender: str
     date: str
     snippet: str
+    body: str = ""
 
 
 @dataclass(frozen=True)
@@ -126,10 +127,13 @@ def search_messages(
     *,
     query: str,
     max_results: int | None = 20,
+    include_body: bool = False,
 ) -> list[MessageSummary]:
     """List message summaries matching a Gmail search query.
 
     ``max_results=None`` pages until Gmail has no further hit in the query.
+    ``include_body`` fetches the plain text of each message. The default stays
+    metadata, for search and the manual digest.
     """
     service = build_gmail_service(creds)
     summaries: list[MessageSummary] = []
@@ -155,17 +159,14 @@ def search_messages(
             .execute()
         )
         for ref in listing.get("messages") or []:
-            msg = (
-                service.users()
-                .messages()
-                .get(
-                    userId="me",
-                    id=ref["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "Subject", "Date"],
-                )
-                .execute()
-            )
+            get_kwargs: dict[str, Any] = {
+                "userId": "me",
+                "id": ref["id"],
+                "format": "full" if include_body else "metadata",
+            }
+            if not include_body:
+                get_kwargs["metadataHeaders"] = ["From", "Subject", "Date"]
+            msg = service.users().messages().get(**get_kwargs).execute()
             headers = _headers_map(msg)
             summaries.append(
                 MessageSummary(
@@ -174,6 +175,7 @@ def search_messages(
                     sender=headers.get("from", ""),
                     date=headers.get("date", ""),
                     snippet=(msg.get("snippet") or "").strip(),
+                    body=extract_body_text(msg) if include_body else "",
                 )
             )
             if max_results is not None and len(summaries) >= max_results:
