@@ -9,9 +9,9 @@
 
 **emails-assistant** — personal helper for Gmail (multiple accounts).
 
-**Phase 1:** readonly digest (e.g. last 12h) from two mailboxes (`email1`, `email2`).  
-**Delivery:** undecided (plain text first; Telegram possible later).  
-**Later (maybe):** triage, draft replies, cron in container, MCP for chat agents.
+**Phase 1:** readonly mail from two mailboxes (`email1`, `email2`). Interactive commands print plain text. The morning run writes one local day file.  
+**Delivery:** stdout for `digest` / `search` / `show`; day file + a count notification for the 08:00 LaunchAgent. Telegram is still open.  
+**Later (maybe):** triage, draft replies, MCP for chat agents.
 
 ## Stack (do not change without asking)
 
@@ -23,13 +23,13 @@
 | Credential store | macOS Keychain (no biometrics; no project token files) |
 | Account aliases | `email1`, `email2` (real addresses only in local `.env` / Keychain) |
 | Deps | pinned in `requirements.txt` / `pyproject.toml` |
-| Runtime | Dev Container first; cron / `docker run --rm` later |
+| Runtime | Dev Container for interactive use; LaunchAgent runs `docker run --rm` for the morning file |
 
-**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail/osascript, `gws`, plaintext project token files, new frameworks, DB.
+**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail as a mail client, `gws`, plaintext project token files, new frameworks, DB. The LaunchAgent banner already uses `osascript` for a notification; do not grow that into a mail path.
 
 ## Sources of truth
 
-- Product/stack — this file + `README.md`
+- Product — [`README.md`](README.md); stack — this file
 - Dev environment / Dev Container — [`docs/dev.md`](docs/dev.md)
 - Durable rationale — `docs/solutions/`
 - Env knobs — `.env.example`
@@ -39,9 +39,12 @@ Structure below is **canonical**; don’t duplicate long trees in other docs.
 
 ```
 src/emails_assistant/     # application package
+scripts/                  # Mac host: Keychain, inject, LaunchAgent
+tests/
 requirements.txt
 pyproject.toml
 .devcontainer/            # see docs/dev.md
+Dockerfile                # morning `docker run --rm` image
 docs/dev.md
 docs/solutions/
 ```
@@ -66,5 +69,5 @@ docs/solutions/
 
 ## Current status
 
-Scaffold + stack / credential-store / account-alias decisions documented.  
-**Next (human-driven):** Google Cloud OAuth client → Keychain tokens for `email1` / `email2` → digest CLI.
+Readonly CLI (`login`, `smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. Host scripts live in `scripts/`; behavior is in [`docs/dev.md`](docs/dev.md).  
+**Still open:** Telegram (or any other send channel), triage, draft replies.

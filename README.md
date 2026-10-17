@@ -1,45 +1,15 @@
 # emails-assistant
 
-Personal Gmail assistant. First goal: readonly digest from multiple accounts. Later: triage, drafts, agent tools.
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
+![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?logo=gmail&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
 
-## Stack (decided)
+Personal emails assistant.
 
-- **Python 3.12+**
-- **Gmail API** + OAuth, scope `gmail.readonly` only
-- Libs: `google-api-python-client`, `google-auth`, `google-auth-httplib2`, `google-auth-oauthlib`
-- **Credentials:** macOS Keychain (no biometrics) — not project token files
-- **Accounts in docs/code:** aliases `email1`, `email2` only
-- Run: local / Dev Container → later cron + one-shot `docker run --rm` + optional MCP
+Reads several Gmail accounts.
 
-Not in scope for v1: Apple Mail/AppleScript, IMAP App Passwords, `gws`, Cursor-only MCP as the main runtime, plaintext project token files.
+At 08:00 the Mac writes today's mail to a text file and shows how many messages arrived. You can also print a recent digest, search one account, or open one message.
 
-Phase 1 **delivery** (stdout text vs Telegram, etc.) is still open.
+[dev.md](docs/dev.md) · [AGENTS.md](AGENTS.md) · [solutions](docs/solutions/) · [plans](docs/plans/)
 
-## Status
-
-Readonly digest CLI is in place (`emails-assistant digest` / `login` / `smoke`). Delivery channel still open.
-
-## Quick start
-
-1. Dev environment: **[docs/dev.md](docs/dev.md)** (Dev Container, host vs Keychain).
-2. `cp .env.example .env` — put real addresses only in local `.env` (gitignored).
-3. Google Cloud OAuth (manual) → Keychain items for `email1` / `email2` (`emails-assistant login …`).
-4. `emails-assistant digest` — plain-text digest to stdout.
-
-## Layout
-
-Agent rules: **[AGENTS.md](AGENTS.md)**. Dev details: **[docs/dev.md](docs/dev.md)**.
-
-```
-src/emails_assistant/
-requirements.txt
-pyproject.toml
-.devcontainer/
-docs/dev.md
-docs/solutions/
-```
-
-## Security
-
-- No personal addresses or tokens in git; Keychain on the host; scope **read mail only**
-- Do not upload mailbox contents to third-party APIs unless explicitly asked
+Logins stay in the Mac Keychain. Real addresses stay in a local `.env`, not in git.

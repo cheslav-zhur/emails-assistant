@@ -15,8 +15,8 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** Mail commands in Linux receive only a short-lived Gmail access token. The refresh token and OAuth client secret stay in macOS Keychain. The host refreshes each mailbox access token and passes only those tokens in. The container does not call the token endpoint on the mail path.
-- **Authority:** This Product Contract wins on behavior. Key Technical Decisions win on mechanism inside those requirements. `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the credential-export steps in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md` are not this contract.
-- **Stop:** Do not build the morning file, banner, or timer. Do not install packages. Do not put a refresh token or client secret in the container on a mail run. Do not rewrite plan 005 or plan 003 in place.
+- **Authority:** This Product Contract wins on behavior. Key Technical Decisions win on mechanism inside those requirements. The credential-export steps in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md` are not this contract.
+- **Stop:** Do not build the morning file, banner, or timer. Do not install packages. Do not put a refresh token or client secret in the container on a mail run. Do not rewrite plan 005 in place.
 - **Execution:** code. Tail ownership stays with the executor after this plan.
 
 ## Product Contract
@@ -130,7 +130,7 @@ Python runs in Linux, and Linux cannot open macOS Keychain. The current bridge c
 
 ### Scope Boundaries
 
-This plan replaces the credential inject described in `docs/plans/2026-09-28-003-feat-in-memory-credential-handoff-plan.md` and the Keychain-to-directory export in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md`. Those files stay as they are. Do not implement their inject.
+This plan replaces the Keychain-to-directory export in `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md`. That file stays as it is. Do not implement its inject.
 
 Out of scope:
 
@@ -320,7 +320,7 @@ U1 before U2. U2 before U3. U4 after U3 so the docs describe the script that exi
 - Replace the host-versus-container paragraph so login and Keychain I/O stay on the Mac, mail runs receive an access token only, and the one-shot path does not use the Dev Container tmpfs.
 - Tell the owner that `.creds/client.json` and `.creds/token-*.json` must be gone.
 - Record the result of the Mac `ps` check for the Keychain write. Do not paste a real token into the doc.
-- Do not edit plan 005 or plan 003.
+- Do not edit plan 005.
 
 **Patterns to follow:** The existing Host vs container section in `docs/dev.md`.
 
@@ -346,7 +346,7 @@ U1 before U2. U2 before U3. U4 after U3 so the docs describe the script that exi
 - The host script can inject into a named container, emit a one-shot token without touching that container, store a login result, and report `invalid_grant` without secrets.
 - `.creds/` is not part of the mail or login path. Existing `.creds/client.json` and `.creds/token-*.json` are removed. A mail refresh leaves no client secret or refresh token on the host disk or in the repo.
 - `docs/dev.md` matches that behavior and records the Keychain-write `ps` check.
-- Plan 005 and plan 003 are unchanged.
+- Plan 005 is unchanged.
 - Abandoned experiments are not left in the diff.
 
 ## System-Wide Impact

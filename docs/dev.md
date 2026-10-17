@@ -2,6 +2,14 @@
 
 Local/dev setup for **emails-assistant**. Product decisions live in `AGENTS.md`; durable stack rationale in `docs/solutions/`.
 
+## Quick start
+
+1. Open this repo in the Dev Container (details below).
+2. `cp .env.example .env` — real addresses only in local `.env` (gitignored).
+3. On the Mac, log in each mailbox: `scripts/macos-access-token.sh login <container> <alias>`.
+4. `scripts/macos-access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
+5. Morning agent (Mac, logged-in GUI session): `scripts/macos-install-daily-agent.sh`.
+
 ## Dev Container
 
 Canonical config: `.devcontainer/devcontainer.json`.
@@ -70,9 +78,30 @@ Two mailboxes, referred to only as:
 
 Map alias → real address in **local** `.env` (gitignored) or Keychain item attributes — never commit real addresses, tokens, or message fixtures.
 
-## Phase 1 output (open)
+## Commands
 
-Digest delivery is **not finalized**. Likely plain text first; Telegram send is a candidate later. Do not hard-wire a delivery channel until decided.
+Inside the container, after `inject`. Mail commands read `/dev/shm/emails-assistant/access-<alias>.json` and do not refresh tokens.
+
+| Command | What it does |
+|---------|----------------|
+| `emails-assistant digest [--hours N] [--alias ALIAS]` | Recent mail for configured aliases (default 12h, or `EMAILS_ASSISTANT_SINCE_HOURS`) |
+| `emails-assistant search ALIAS QUERY [--max N]` | Gmail query, one mailbox (default 20) |
+| `emails-assistant show ALIAS MESSAGE_ID` | Headers and plain body of one message |
+| `emails-assistant smoke ALIAS` | List one message as a sanity check |
+| `emails-assistant daily` | Read both mailboxes from stdin JSON lines, write today's file, print the count |
+| `emails-assistant login ALIAS` | Browser OAuth; mailbox-token JSON on stdout. The host script calls this. |
+
+On the Mac (`scripts/macos-access-token.sh`):
+
+| Command | What it does |
+|---------|----------------|
+| `inject <container>` | Refresh due tokens and write access tokens into the container |
+| `one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
+| `login <container> <alias>` | Run container login and store the mailbox token in Keychain |
+
+`scripts/macos-install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
+
+Interactive mail stays on stdout. The morning run writes the day file and shows a count notification. Telegram is still open; do not add a send channel until that is decided.
 
 ## Env
 
