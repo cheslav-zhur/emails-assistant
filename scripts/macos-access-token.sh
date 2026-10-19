@@ -369,7 +369,7 @@ cmd_login() {
   clear_legacy_creds || return 1
   client="$(security_cmd find-generic-password -s "$SERVICE" -a "oauth-client" -w)" || return 1
   port="$(login_port)" || return 1
-  image="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+  image="${EMAILS_ASSISTANT_LOGIN_IMAGE:-emails-assistant:login}"
   docker_args=(
     run --rm -i -u vscode
     -p "127.0.0.1:${port}:${port}"
@@ -385,7 +385,9 @@ cmd_login() {
     "$image"
     python3 -m login "$alias" --oauth-port "$port" --no-browser
   )
-  "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
+  EMAILS_ASSISTANT_IMAGE="$image" \
+    EMAILS_ASSISTANT_IMAGE_TARGET=login \
+    "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
     printf '%s' "$client" | docker_cmd "${docker_args[@]}" \
       2> >(open_auth_url)

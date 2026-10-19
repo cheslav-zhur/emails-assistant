@@ -18,10 +18,10 @@ Personal Python Dev Container standard (image, pip cache, ssh-agent): see `~/pro
 
 ### What this repo uses
 
-- Image: `Dockerfile`, from `mcr.microsoft.com/devcontainers/python:3.12-bookworm`. It installs `requirements.txt`. `postCreateCommand` still installs this package editable from the mounted workspace.
+- Image: `Dockerfile` target `app`, from `mcr.microsoft.com/devcontainers/python:3.12-bookworm`. It installs the `app` extra from `pyproject.toml`. `postCreateCommand` still installs this package editable from the mounted workspace.
 - `TZ`: `Asia/Ho_Chi_Minh` (logs / local scheduling; Gmail API queries usually use relative/`newer_than` or UTC)
 - Pip cache: named volume → `/home/vscode/.cache/pip` (pip default; no `PIP_CACHE_DIR`)
-- `postCreateCommand`: `chown` that cache path, then `pip install -r requirements.txt` and `pip install -e .`
+- `postCreateCommand`: `chown` that cache path, then `pip install -e ".[app,login,dev]"`
 - Git: host ssh-agent (`SSH_AUTH_SOCK` → `/ssh-agent`)
 - Extensions: `ms-python.python`, `ms-python.vscode-pylance`
 - `remoteUser`: `vscode`
@@ -43,7 +43,7 @@ macOS **Keychain** is the only durable store for the OAuth client secret and eac
 
 - **Open Dev Container.** `inject <container>` writes one file per alias at `/dev/shm/emails-assistant/access-<alias>.json` (mode `0600`, owner `vscode`) via `docker exec -i -u vscode`. `smoke`, `digest`, `search`, and `show` read those files. They do not refresh.
 - **One-shot.** `one-shot` prints one JSON object per mailbox on stdout and does not read or write the Dev Container tmpfs. Keep that stdout in memory. Do not write it to the day file, the repo, shell history, or logs.
-- **Login.** `login <alias>` is the only way to store a new refresh token. It uses the morning image `emails-assistant:daily` (built when missing or when `requirements.txt` changed) and starts one container with `docker run --rm`. The consent port is published on `127.0.0.1`; the owner does not pass a container name or forward a port. The client secret is piped to that container on stdin for the run. The Mac opens the system browser. Google redirects to the published port. The mailbox token comes back on container stdout and is stored in Keychain unchanged. The command does not print the token. The container then exits and keeps neither the secret nor the token. If the browser cannot be opened, the authorization URL is printed and the command still waits. If consent is denied or the wait ends, the command fails with `Login did not complete.` and the previous token for that alias stays.
+- **Login.** `login <alias>` is the only way to store a new refresh token. It uses the image `emails-assistant:login` (built when missing or when `pyproject.toml` changed) and starts one container with `docker run --rm`. It does not build the morning image. The consent port is published on `127.0.0.1`; the owner does not pass a container name or forward a port. The client secret is piped to that container on stdin for the run. The Mac opens the system browser. Google redirects to the published port. The mailbox token comes back on container stdout and is stored in Keychain unchanged. The command does not print the token. The container then exits and keeps neither the secret nor the token. If the browser cannot be opened, the authorization URL is printed and the command still waits. If consent is denied or the wait ends, the command fails with `Login did not complete.` and the previous token for that alias stays.
 
 If an access token is missing, expired, or rejected, the mail command stops with `Access token missing or rejected. Run the host script again.` It does not restart the container. If Google rejects the refresh token, the host script prints `Login is required for <alias>. The refresh token was rejected.` on stderr and does not print a token.
 
@@ -57,13 +57,13 @@ Each try calls `one-shot` only when Docker is running. That stdout stays in memo
 
 The banner is `osascript` `display notification`. A success shows only the count. A mailbox, token, or Docker failure shows `Daily digest did not run.` once per failure streak and retries every 15 minutes. A summary miss is container stdout exactly `Summary did not run.` with no day file: the script writes `digests/YYYY-MM-DD.summary-miss`, shows that sentence once, and does not call Gemini again that local day. The marker is not a `*.txt` file, so the window stays on the last day file. The next local day ignores the marker. The notification does not open the file.
 
-On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:daily`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
+On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:app`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
 
 ```bash
 scripts/macos-install-daily-agent.sh
 ```
 
-The 08:00 run builds that image only when it is missing or `requirements.txt` has changed. Other mornings do not rebuild it.
+The 08:00 run builds that image only when it is missing or `pyproject.toml` has changed. Other mornings do not rebuild it. The login image has its own stamp of the same file.
 
 Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 

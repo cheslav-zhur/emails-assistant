@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAILURE="Daily digest did not run."
 SUMMARY_MISS="Summary did not run."
-IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:app}"
+TARGET="${EMAILS_ASSISTANT_IMAGE_TARGET:-app}"
 CONTAINER_ROOT="/workspaces/emails-assistant"
 CONTAINER_DAILY="/daily"
 
@@ -53,27 +54,27 @@ image_stamp() {
     printf '%s' "$EMAILS_ASSISTANT_IMAGE_STAMP"
     return
   fi
-  printf '%s' "$HOME/Library/Application Support/emails-assistant/daily-image.sha256"
+  printf '%s' "$HOME/Library/Application Support/emails-assistant/${TARGET}-image.sha256"
 }
 
-requirements_hash() {
+pyproject_hash() {
   if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$ROOT/requirements.txt" | awk '{print $1}'
+    shasum -a 256 "$ROOT/pyproject.toml" | awk '{print $1}'
     return
   fi
-  sha256sum "$ROOT/requirements.txt" | awk '{print $1}'
+  sha256sum "$ROOT/pyproject.toml" | awk '{print $1}'
 }
 
 ensure_image() {
   local stamp hash
   stamp="$(image_stamp)"
-  hash="$(requirements_hash)"
+  hash="$(pyproject_hash)"
   if docker_cmd image inspect "$IMAGE" >/dev/null 2>&1 \
     && [[ -f "$stamp" ]] \
     && [[ "$(cat "$stamp")" == "$hash" ]]; then
     return 0
   fi
-  docker_cmd build -t "$IMAGE" -f "$ROOT/Dockerfile" "$ROOT"
+  docker_cmd build --target "$TARGET" -t "$IMAGE" -f "$ROOT/Dockerfile" "$ROOT"
   mkdir -p "$(dirname "$stamp")"
   printf '%s\n' "$hash" >"$stamp"
 }

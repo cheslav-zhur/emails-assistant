@@ -2,7 +2,8 @@
   "name": "emails-assistant",
   "build": {
     "dockerfile": "../Dockerfile",
-    "context": ".."
+    "context": "..",
+    "target": "app"
   },
   "containerEnv": {
     "TZ": "Asia/Ho_Chi_Minh",
@@ -32,6 +33,6 @@
       }
     }
   },
-  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/pip && pip install -r requirements.txt && pip install -e .",
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/pip && pip install -e \".[app,login,dev]\"",
   "remoteUser": "vscode"
 }
