@@ -6,6 +6,7 @@ import json
 import os
 import stat
 import unittest
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import timedelta
 from io import StringIO
@@ -25,6 +26,7 @@ from emails_assistant.auth import (
     load_access_credentials,
 )
 from emails_assistant.cli import main
+from login.__main__ import main as login_main
 
 _SHM_DIR = Path("/dev/shm/emails-assistant")
 
@@ -161,7 +163,12 @@ class LoadAccessCredentialsTest(unittest.TestCase):
             load_access_credentials(_safe_payload(access_token=""))
 
 
-def _run_cli(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
+def _run_cli(
+    argv: list[str],
+    *,
+    stdin: str = "",
+    entry: Callable[[list[str] | None], None] = main,
+) -> tuple[object, str, str]:
     stdout = StringIO()
     stderr = StringIO()
     with (
@@ -170,7 +177,7 @@ def _run_cli(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
         patch("sys.stdin", StringIO(stdin)),
     ):
         try:
-            main(argv)
+            entry(argv)
         except SystemExit as exc:
             return exc.code if exc.code is not None else 0, stdout.getvalue(), stderr.getvalue()
     return 0, stdout.getvalue(), stderr.getvalue()
@@ -350,7 +357,11 @@ class MailCommandAccessTokenTest(unittest.TestCase):
                 return creds
 
             flow.run_local_server.side_effect = run_local_server
-            code, out, err = _run_cli(["login", "email1", "--no-browser"], stdin=client)
+            code, out, err = _run_cli(
+                ["email1", "--no-browser"],
+                stdin=client,
+                entry=login_main,
+            )
         self.assertEqual(code, 0, err)
         self.assertNotIn("login ok", out)
         self.assertEqual(json.loads(out), json.loads(creds.to_json()))

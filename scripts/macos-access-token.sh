@@ -383,7 +383,7 @@ cmd_login() {
     -v "${ROOT}:/workspaces/emails-assistant"
     -w /workspaces/emails-assistant
     "$image"
-    python3 -m emails_assistant.cli login "$alias" --oauth-port "$port" --no-browser
+    python3 -m login "$alias" --oauth-port "$port" --no-browser
   )
   "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
