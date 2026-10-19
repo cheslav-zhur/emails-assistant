@@ -23,8 +23,7 @@ _TOKEN_2 = "ya29-email2"
 _REFRESH = "1//refresh-secret-value"
 _SUBJECT = "secret-subject"
 _FAILURE = "Daily digest did not run."
-_BEARER = "ya29-cloud-bearer"
-_PROJECT = "cloud-project"
+_KEY_SECRET = "not-a-real-key"
 _MISS = "Summary did not run."
 _MODEL = "gemini-3.8-flash"
 
@@ -159,12 +158,20 @@ class _Service:
 @pytest.fixture
 def daily_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("EMAILS_ASSISTANT_ACCOUNTS", "email1,email2")
-    monkeypatch.setenv("EMAILS_ASSISTANT_DAILY_DIR", str(tmp_path))
+    day = tmp_path / "digests"
+    day.mkdir()
+    key = tmp_path / "gemini.json"
+    key.write_text(
+        '{"type":"service_account","project_id":"cloud-project","private_key":"not-a-real-key"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EMAILS_ASSISTANT_DAILY_DIR", str(day))
     monkeypatch.setenv("EMAILS_ASSISTANT_SINCE_HOURS", "12")
+    monkeypatch.setenv("EMAILS_ASSISTANT_GEMINI_KEY", str(key))
     if _SHM_DIR.exists():
         for path in _SHM_DIR.glob("access-*.json"):
             path.unlink()
-    yield tmp_path
+    yield day
     if _SHM_DIR.exists():
         for path in _SHM_DIR.glob("access-*.json"):
             path.unlink()
@@ -178,12 +185,6 @@ def _install_mailboxes(*boxes: _Messages) -> tuple[list[_Messages], object]:
         return _Service(pending.pop(0))
 
     return list(boxes), patch("emails_assistant.gmail_api.build_gmail_service", side_effect=build)
-
-
-def _cloud(**extra: object) -> dict[str, object]:
-    payload: dict[str, object] = {"bearer": _BEARER, "project_id": _PROJECT}
-    payload.update(extra)
-    return payload
 
 
 class _Part:
@@ -231,7 +232,7 @@ def test_two_mailboxes_become_one_summary_and_a_count(daily_dir: Path) -> None:
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     day = daily_dir / "2026-09-29.txt"
@@ -244,13 +245,12 @@ def test_two_mailboxes_become_one_summary_and_a_count(daily_dir: Path) -> None:
     assert "From:" not in text
     assert _TOKEN not in text
     assert _TOKEN_2 not in text
-    assert _BEARER not in text
+    assert _KEY_SECRET not in text
     assert _TOKEN not in out
-    assert _BEARER not in out
+    assert _KEY_SECRET not in out
     assert client.models.calls[0]["model"] == _MODEL
     access = (_SHM_DIR / "access-email1.json").read_text(encoding="utf-8")
-    assert _BEARER not in access
-    assert _PROJECT not in access
+    assert _KEY_SECRET not in access
 
 
 def test_daily_sends_body_or_snippet_and_not_the_message_id(daily_dir: Path) -> None:
@@ -273,7 +273,7 @@ def test_daily_sends_body_or_snippet_and_not_the_message_id(daily_dir: Path) -> 
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     contents = client.models.calls[0]["contents"]
@@ -307,7 +307,7 @@ def test_query_uses_after_epoch_from_the_previous_file(daily_dir: Path) -> None:
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, _err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     assert code == 0, out
@@ -326,7 +326,7 @@ def test_one_hundred_twenty_messages_are_all_written(daily_dir: Path) -> None:
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
@@ -405,7 +405,7 @@ def test_one_mailbox_name_is_enough(daily_dir: Path) -> None:
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
@@ -423,7 +423,7 @@ def test_stop_text_outside_the_band_is_still_written(daily_dir: Path, text: str)
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     assert code == 0, err
@@ -431,7 +431,7 @@ def test_stop_text_outside_the_band_is_still_written(daily_dir: Path, text: str)
     assert text in (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
 
 
-def test_quiet_morning_skips_gemini_without_a_bearer(daily_dir: Path) -> None:
+def test_quiet_morning_skips_gemini_even_with_a_key(daily_dir: Path) -> None:
     _boxes, patched = _install_mailboxes(_Messages([]), _Messages([]))
     built: list[str] = []
 
@@ -449,11 +449,11 @@ def test_quiet_morning_skips_gemini_without_a_bearer(daily_dir: Path) -> None:
     assert built == []
 
 
-@pytest.mark.parametrize(
-    "cloud_line",
-    [None, {"bearer": _BEARER}, {"project_id": _PROJECT}, {"bearer": "  ", "project_id": _PROJECT}],
-)
-def test_mail_without_a_bearer_writes_no_file(daily_dir: Path, cloud_line: dict[str, object] | None) -> None:
+def test_mail_without_a_key_writes_no_file(
+    daily_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMAILS_ASSISTANT_GEMINI_KEY", str(daily_dir / "missing.json"))
     _boxes, patched = _install_mailboxes(_Messages(["a"], subjects={"a": _SUBJECT}), _Messages([]))
     built: list[str] = []
 
@@ -461,16 +461,14 @@ def test_mail_without_a_bearer_writes_no_file(daily_dir: Path, cloud_line: dict[
         built.append("built")
         return _Client([])
 
-    payloads = [_payload(_TOKEN), _payload(_TOKEN_2)]
-    if cloud_line is not None:
-        payloads.append(cloud_line)
     with patched, patch("emails_assistant.summary._enterprise_client", side_effect=_track):
-        code, out, err = _run(["daily"], stdin=_stdin(*payloads))
+        code, out, err = _run(["daily"], stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)))
 
     assert code == 1
     assert out.strip() == _MISS
     assert _FAILURE not in out
     assert _SUBJECT not in f"{out}\n{err}"
+    assert _KEY_SECRET not in f"{out}\n{err}"
     assert not (daily_dir / "2026-09-29.txt").exists()
     assert built == []
 
@@ -491,14 +489,14 @@ def test_a_miss_writes_nothing_and_names_no_mail(daily_dir: Path, response: _Res
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(
             ["daily"],
-            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud()),
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
         )
 
     assert code == 1
     assert out.strip() == _MISS
     assert _FAILURE not in out
     assert _SUBJECT not in f"{out}\n{err}"
-    assert _BEARER not in f"{out}\n{err}"
+    assert _KEY_SECRET not in f"{out}\n{err}"
     assert not (daily_dir / "2026-09-29.txt").exists()
 
 
@@ -512,7 +510,7 @@ def test_a_miss_leaves_the_mail_in_the_next_summary(daily_dir: Path) -> None:
     )
     _boxes, patched = _install_mailboxes(*boxes)
     client = _Client([_Response("SAFETY", [_Part("blocked")]), _stop("Now it is summarized.")])
-    stdin = _stdin(_payload(_TOKEN), _payload(_TOKEN_2), _cloud())
+    stdin = _stdin(_payload(_TOKEN), _payload(_TOKEN_2))
 
     with patched, patch("emails_assistant.summary._enterprise_client", return_value=client):
         code, out, err = _run(["daily"], stdin=stdin)

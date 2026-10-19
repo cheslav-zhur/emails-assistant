@@ -67,6 +67,8 @@ The 08:00 run builds that image only when it is missing or `requirements.txt` ha
 
 Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 
+The same repo mount includes gitignored `keys/`. One service-account JSON in that directory is how the morning container calls Gemini. The host does not mint that token. `EMAILS_ASSISTANT_GEMINI_KEY` overrides the file. The private key stays out of git.
+
 **Keychain write `ps` check.** Not observed in this session: the Linux Dev Container cannot run `security`. The script passes the mailbox JSON to `security add-generic-password -w`, so that JSON can show in the process list for the length of the write. The refresh body goes to curl on stdin, not as a curl argument. Do not paste a token into this doc when the Mac check is run.
 
 ## Accounts (aliases only in git)

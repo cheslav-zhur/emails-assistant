@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 MODEL = "gemini-3.8-flash"
 LOCATION = "global"
+_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 _INSTRUCTION = (
     "Summarize what is important across both mailboxes as one pool, "
     "in about 4 to 10 sentences. "
@@ -46,28 +51,65 @@ def _visible_summary(response: object) -> str:
     return "".join(chunks).strip()
 
 
-def _enterprise_client(bearer: str, project_id: str) -> Any:
-    from google import genai
-    from google.oauth2.credentials import Credentials
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
+
+def gemini_key_path(
+    *,
+    environ: Mapping[str, str] | None = None,
+    root: Path | None = None,
+) -> Path | None:
+    """The service-account file for Gemini, or none when it is missing."""
+    env = os.environ if environ is None else environ
+    override = env.get("EMAILS_ASSISTANT_GEMINI_KEY", "").strip()
+    if override:
+        path = Path(override)
+        return path if path.is_file() else None
+    directory = (_repo_root() if root is None else root) / "keys"
+    if not directory.is_dir():
+        return None
+    found = sorted(path for path in directory.glob("*.json") if path.is_file())
+    if len(found) != 1:
+        return None
+    return found[0]
+
+
+def _enterprise_client(key_path: Path) -> Any:
+    from google import genai
+    from google.oauth2 import service_account
+
+    payload = json.loads(key_path.read_text(encoding="utf-8"))
+    project_id = payload.get("project_id")
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id")
+    credentials = service_account.Credentials.from_service_account_info(
+        payload,
+        scopes=[_SCOPE],
+    )
     return genai.Client(
         enterprise=True,
-        project=project_id,
+        project=project_id.strip(),
         location=LOCATION,
-        credentials=Credentials(token=bearer),
+        credentials=credentials,
     )
 
 
 def summarize(
     mail_text: str,
     *,
-    bearer: str,
-    project_id: str,
+    key_path: Path | None = None,
     client: Any | None = None,
 ) -> str:
     """Return the finished summary, or an empty string when Gemini does not."""
     if client is None:
-        client = _enterprise_client(bearer, project_id)
+        if key_path is None:
+            return ""
+        try:
+            client = _enterprise_client(key_path)
+        except Exception:
+            logger.error("Gemini credentials were rejected")
+            return ""
     try:
         response = client.models.generate_content(
             model=MODEL,

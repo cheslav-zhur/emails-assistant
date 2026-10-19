@@ -106,32 +106,12 @@ def _daily_fail() -> None:
     raise SystemExit(1)
 
 
-def _split_cloud_access(lines: list[str]) -> tuple[list[str], str, str]:
-    """Peel a trailing bearer record. Gmail lines stay on stdin unchanged."""
-    if not lines:
-        return lines, "", ""
-    try:
-        payload = json.loads(lines[-1])
-    except json.JSONDecodeError:
-        return lines, "", ""
-    if not isinstance(payload, dict) or "access_token" in payload:
-        return lines, "", ""
-    if "bearer" not in payload and "project_id" not in payload:
-        return lines, "", ""
-    bearer = payload.get("bearer")
-    project_id = payload.get("project_id")
-    bearer_text = bearer.strip() if isinstance(bearer, str) else ""
-    project_text = project_id.strip() if isinstance(project_id, str) else ""
-    return lines[:-1], bearer_text, project_text
-
-
 def _run_daily() -> None:
     """Read both mailboxes, then write today's file and print only the count."""
     aliases = config.known_aliases()
     for alias in aliases:
         config.resolve_alias(alias)
     lines = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
-    lines, bearer, project_id = _split_cloud_access(lines)
     if len(lines) != len(aliases):
         _daily_fail()
     payloads: list[dict[str, object]] = []
@@ -188,15 +168,16 @@ def _run_daily() -> None:
     except Exception:
         _daily_fail()
 
+    from emails_assistant.summary import gemini_key_path, summarize
+
     mail_text = render_summary_input(tuple(reads), window_start=preview.window_start)
+    key = gemini_key_path()
     if not mail_text:
         summary: str | None = None
-    elif bearer and project_id:
-        from emails_assistant.summary import summarize
-
-        summary = summarize(mail_text, bearer=bearer, project_id=project_id)
-    else:
+    elif key is None:
         summary = ""
+    else:
+        summary = summarize(mail_text, key_path=key)
     decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads, summary=summary)
     if decision.failure:
         print(decision.failure)
