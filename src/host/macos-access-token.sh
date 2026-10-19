@@ -2,7 +2,7 @@
 # Mac host: refresh Gmail access tokens from Keychain and hand off access tokens only.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICE="${EMAILS_ASSISTANT_KEYCHAIN_SERVICE:-emails-assistant}"
 LEGACY_DIR="$ROOT/.creds"
 
@@ -388,7 +388,7 @@ cmd_login() {
   )
   EMAILS_ASSISTANT_IMAGE="$image" \
     EMAILS_ASSISTANT_IMAGE_TARGET=login \
-    "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
+    "$ROOT/src/host/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
     printf '%s' "$client" | docker_cmd "${docker_args[@]}" \
       2> >(open_auth_url)

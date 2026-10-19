@@ -2,9 +2,9 @@
 # Host daily agent with stubbed clock, one-shot, docker, and osascript.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/scripts/macos-daily.sh"
-PLIST="$ROOT/scripts/com.emails-assistant.daily.plist"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT/src/host/macos-daily.sh"
+PLIST="$ROOT/src/host/com.emails-assistant.daily.plist"
 BIN="$(mktemp -d)"
 IO_DIR=""
 DAY_DIR=""

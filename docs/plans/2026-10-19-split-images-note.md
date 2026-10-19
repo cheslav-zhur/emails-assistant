@@ -32,7 +32,6 @@ The host starts `python -m login` inside `emails-assistant:login`. That process 
 
 ```
 src/shared.py
-src/shared.test.py
 src/emails_assistant/
 src/login/
 src/host/
@@ -40,7 +39,7 @@ src/host/
 
 `src/emails_assistant/` stays the mail package. The terminal command stays `emails-assistant` and points at `emails_assistant.cli:main`. The image target is still `app`; the package is not renamed. `src/login/` is the consent package. `src/shared.py` is one module, not a `shared/` directory. `src/host/` holds the Mac scripts that are in `scripts/` today. There is no `tests/` directory.
 
-A check sits next to the file it covers: `digest.py` and `digest.test.py`, `macos-daily.sh` and `macos-daily.test.sh`. `pyproject.toml` teaches pytest the `*.test.py` pattern. Shell checks stay shell.
+A check sits next to the file it covers: `digest.py` and `test_digest.py`, `macos-daily.sh` and `macos-daily.test.sh`. `digest.test.py` is not a module name pytest can import beside `digest.py`. Shell checks stay shell.
 
 ## shared.py
 
@@ -61,13 +60,13 @@ Access-token parsing stays in `emails_assistant`. Consent stays in `login`. The 
 
 ## Mounts
 
-The morning container mounts `src/emails_assistant/`, `src/shared.py`, `keys/` read-only, and `digests/` writable. `keys/` is the service-account JSON the summary already reads. `digests/` is the day file and the summary-miss marker. The login container mounts `src/login/` and `src/shared.py`. A `*.test.py` file inside a mounted package comes along and is not run. Login does not mount `src/host/`, `.env`, `keys/`, `digests/`, or the mail package. The morning container does not mount `src/host/`, `.env`, or `src/login/`.
+The morning container mounts `src/emails_assistant/`, `src/shared.py`, `keys/` read-only, and `digests/` writable. `keys/` is the service-account JSON the summary already reads. `digests/` is the day file and the summary-miss marker. The login container mounts `src/login/` and `src/shared.py`. A `test_*.py` file inside a mounted package comes along and is not run. Login does not mount `src/host/`, `.env`, `keys/`, `digests/`, or the mail package. The morning container does not mount `src/host/`, `.env`, or `src/login/`.
 
 The Dev Container still opens the whole repo. It is the editor.
 
 A Python edit in a mounted file shows up without a rebuild. Rebuild when `pyproject.toml` changes. Each tag keeps its own stamp, and both stamps hash that file. Those stamps follow `pyproject.toml` instead of `requirements.txt`.
 
-`docs/dev.md` and `AGENTS.md` change in the same edit as the tags. Until then they still say `emails-assistant:daily` and `requirements.txt`.
+`docs/dev.md` and `AGENTS.md` name `emails-assistant:app`, `emails-assistant:login`, and `src/host/`.
 
 ## Not this change
 

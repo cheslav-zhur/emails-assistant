@@ -8,7 +8,7 @@ problem_type: security_review
 component: tooling
 severity: medium
 applies_when:
-  - "Merging or changing scripts/macos-daily.sh, scripts/macos-access-token.sh, or the LaunchAgent installer"
+  - "Merging or changing src/host/macos-daily.sh, src/host/macos-access-token.sh, or the LaunchAgent installer"
   - "Tempted to hide the Keychain password by passing -w last, or via security -i"
   - "Tempted to rewrite the Keychain write before a Mac check"
 tags:

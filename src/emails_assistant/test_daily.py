@@ -329,7 +329,7 @@ def test_summary_input_uses_body_then_snippet_and_drops_the_boundary(tmp_path: P
 
 
 def test_daily_dir_defaults_to_repo_digests_and_honors_override(tmp_path: Path) -> None:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[2]
     custom = tmp_path / "custom"
 
     chosen = resolve_daily_dir(environ={})
@@ -340,7 +340,7 @@ def test_daily_dir_defaults_to_repo_digests_and_honors_override(tmp_path: Path) 
 
 
 def test_gitignore_ignores_digests() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
 
     assert "digests/" in ignored

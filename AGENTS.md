@@ -39,8 +39,7 @@ Structure below is **canonical**; don’t duplicate long trees in other docs.
 
 ```
 src/emails_assistant/     # application package
-scripts/                  # Mac host: Keychain, inject, LaunchAgent
-tests/
+src/host/                 # Mac host: Keychain, inject, LaunchAgent
 pyproject.toml
 .devcontainer/            # see docs/dev.md
 Dockerfile                # `app` and `login` image targets
@@ -51,7 +50,7 @@ docs/solutions/
 ## Security
 
 - Never commit real email addresses, OAuth tokens, `.env`, or real mail bodies/fixtures
-- Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is the one JSON in gitignored `keys/`; the morning container reads it from the repo mount. Linux container gets an ephemeral Gmail token inject only
+- Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is the one JSON in gitignored `keys/`; the morning container mounts that directory read-only when it exists. Linux container gets an ephemeral Gmail token inject only
 - Scope: mailbox OAuth stays `https://www.googleapis.com/auth/gmail.readonly`. The Gemini service account requests `https://www.googleapis.com/auth/cloud-platform`. Do not add further scopes unless explicitly expanded
 - Do not `pip`/`uv`/`npm` install until the user says **ok** / **go ahead** (opening Dev Container is an explicit go for `postCreate` only — details in `docs/dev.md`)
 - Prefer offline; network for package managers / Google APIs only when needed
@@ -68,5 +67,5 @@ docs/solutions/
 
 ## Current status
 
-Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. A new refresh token comes from `scripts/macos-access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `scripts/`; behavior is in [`docs/dev.md`](docs/dev.md).  
+Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. A new refresh token comes from `src/host/macos-access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
 **Still open:** Telegram (or any other send channel), triage, draft replies.

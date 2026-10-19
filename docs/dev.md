@@ -6,9 +6,9 @@ Local/dev setup for **emails-assistant**. Product decisions live in `AGENTS.md`;
 
 1. Open this repo in the Dev Container (details below).
 2. `cp .env.example .env` — real addresses only in local `.env` (gitignored).
-3. On the Mac, with Docker running, log in each mailbox: `scripts/macos-access-token.sh login email1`, then the same command with `email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
-4. `scripts/macos-access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
-5. Morning agent (Mac, logged-in GUI session): `scripts/macos-install-daily-agent.sh`.
+3. On the Mac, with Docker running, log in each mailbox: `src/host/macos-access-token.sh login email1`, then the same command with `email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
+4. `src/host/macos-access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
+5. Morning agent (Mac, logged-in GUI session): `src/host/macos-install-daily-agent.sh`.
 
 ## Dev Container
 
@@ -39,7 +39,7 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 
 macOS **Keychain** is the only durable store for the OAuth client secret and each mailbox token. Keychain reads and writes stay on the Mac. Mail commands do not call Google's token endpoint.
 
-`scripts/macos-access-token.sh` is the host script. It refreshes a mailbox access token when the stored expiry is missing or already inside the 3 minute 45 second window, then hands off `access_token` and `expiry` only.
+`src/host/macos-access-token.sh` is the host script. It refreshes a mailbox access token when the stored expiry is missing or already inside the 3 minute 45 second window, then hands off `access_token` and `expiry` only.
 
 - **Open Dev Container.** `inject <container>` writes one file per alias at `/dev/shm/emails-assistant/access-<alias>.json` (mode `0600`, owner `vscode`) via `docker exec -i -u vscode`. `smoke`, `digest`, `search`, and `show` read those files. They do not refresh.
 - **One-shot.** `one-shot` prints one JSON object per mailbox on stdout and does not read or write the Dev Container tmpfs. Keep that stdout in memory. Do not write it to the day file, the repo, shell history, or logs.
@@ -51,7 +51,7 @@ If an access token is missing, expired, or rejected, the mail command stops with
 
 ### Daily file on the Mac
 
-`scripts/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists, a summary miss is recorded, or the local calendar day ends.
+`src/host/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists, a summary miss is recorded, or the local calendar day ends.
 
 Each try calls `one-shot` only when Docker is running. That stdout stays in memory and is piped to `docker run --rm -i -u vscode` of the image below. The container mounts `src/emails_assistant/` and `src/shared.py` read-only, and `digests/` writable. It does not mount the rest of the repo. The Mac timezone comes from `/etc/localtime`. The container imports the mounted package. The script does not attach to the open Dev Container and does not pip install.
 
@@ -60,7 +60,7 @@ The banner is `osascript` `display notification`. A success shows only the count
 On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:app`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
 
 ```bash
-scripts/macos-install-daily-agent.sh
+src/host/macos-install-daily-agent.sh
 ```
 
 The 08:00 run builds that image only when it is missing or `pyproject.toml` has changed. Other mornings do not rebuild it. The login image has its own stamp of the same file.
@@ -92,7 +92,7 @@ Inside the container, after `inject`. Mail commands read `/dev/shm/emails-assist
 | `emails-assistant smoke ALIAS` | List one message as a sanity check |
 | `emails-assistant daily` | Read both mailboxes from stdin JSON lines, write today's file, print the count |
 
-On the Mac (`scripts/macos-access-token.sh`):
+On the Mac (`src/host/macos-access-token.sh`):
 
 | Command | What it does |
 |---------|----------------|
@@ -100,7 +100,7 @@ On the Mac (`scripts/macos-access-token.sh`):
 | `one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
 | `login <alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
 
-`scripts/macos-install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
+`src/host/macos-install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
 
 Interactive mail stays on stdout. The morning run writes the day file and shows a count notification. Telegram is still open; do not add a send channel until that is decided.
 

@@ -2,8 +2,8 @@
 # Runs the host script as its own process. Stubs are executables, not shell functions.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/scripts/macos-access-token.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT/src/host/macos-access-token.sh"
 BIN="$(mktemp -d)"
 
 REFRESH_SENTINEL='1//fixture+refresh='
@@ -176,7 +176,7 @@ sec_get() {
 if grep -n '\.creds/' "$SCRIPT" >/dev/null; then
   fail "script contains a .creds/ path"
 fi
-[[ ! -f "$ROOT/scripts/macos-keychain-bridge.sh" ]] || fail "old bridge script still exists"
+[[ ! -f "$ROOT/src/host/macos-keychain-bridge.sh" ]] || fail "old bridge script still exists"
 
 reset_io
 install_mailbox email1 ya29-still-good "2026-09-28T12:10:00Z"
@@ -426,7 +426,7 @@ set -e
 unset EMAILS_ASSISTANT_OPEN EMAILS_ASSISTANT_IMAGE_STAMP
 
 if grep -R -n -e "$REFRESH_SENTINEL" -e "$SECRET_SENTINEL" \
-  --exclude-dir=.git --exclude=test_host_refresh.sh "$ROOT" >/dev/null
+  --exclude-dir=.git --exclude=macos-access-token.test.sh "$ROOT" >/dev/null
 then
   fail "a secret file was left in the repo"
 fi

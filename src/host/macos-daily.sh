@@ -2,7 +2,7 @@
 # Mac host: one daily digest after 08:00 local time. Tokens stay in memory.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FAILURE="Daily digest did not run."
 SUMMARY_MISS="Summary did not run."
 IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:app}"
@@ -92,7 +92,7 @@ one_shot() {
     "$EMAILS_ASSISTANT_ONE_SHOT"
     return
   fi
-  "$ROOT/scripts/macos-access-token.sh" one-shot
+  "$ROOT/src/host/macos-access-token.sh" one-shot
 }
 
 host_tz() {
