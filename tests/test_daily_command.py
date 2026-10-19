@@ -167,7 +167,7 @@ def daily_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setenv("EMAILS_ASSISTANT_DAILY_DIR", str(day))
     monkeypatch.setenv("EMAILS_ASSISTANT_SINCE_HOURS", "12")
-    monkeypatch.setenv("EMAILS_ASSISTANT_GEMINI_KEY", str(key))
+    monkeypatch.setattr("emails_assistant.summary.gemini_key_path", lambda **_kwargs: key)
     if _SHM_DIR.exists():
         for path in _SHM_DIR.glob("access-*.json"):
             path.unlink()
@@ -453,7 +453,7 @@ def test_mail_without_a_key_writes_no_file(
     daily_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EMAILS_ASSISTANT_GEMINI_KEY", str(daily_dir / "missing.json"))
+    monkeypatch.setattr("emails_assistant.summary.gemini_key_path", lambda **_kwargs: None)
     _boxes, patched = _install_mailboxes(_Messages(["a"], subjects={"a": _SUBJECT}), _Messages([]))
     built: list[str] = []
 

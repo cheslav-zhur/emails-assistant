@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -55,17 +53,8 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def gemini_key_path(
-    *,
-    environ: Mapping[str, str] | None = None,
-    root: Path | None = None,
-) -> Path | None:
-    """The service-account file for Gemini, or none when it is missing."""
-    env = os.environ if environ is None else environ
-    override = env.get("EMAILS_ASSISTANT_GEMINI_KEY", "").strip()
-    if override:
-        path = Path(override)
-        return path if path.is_file() else None
+def gemini_key_path(*, root: Path | None = None) -> Path | None:
+    """The one service-account file in keys/, or none when it is missing."""
     directory = (_repo_root() if root is None else root) / "keys"
     if not directory.is_dir():
         return None

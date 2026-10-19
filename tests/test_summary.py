@@ -96,19 +96,17 @@ def test_a_call_error_is_a_miss_without_the_body(caplog: pytest.LogCaptureFixtur
     assert "secret-subject" not in caplog.text
 
 
-def test_key_path_uses_the_override_or_the_single_keys_file(tmp_path: Path) -> None:
-    chosen = tmp_path / "picked.json"
-    chosen.write_text("{}", encoding="utf-8")
+def test_key_path_uses_the_single_keys_file(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     keys = root / "keys"
     keys.mkdir(parents=True)
-    (keys / "one.json").write_text("{}", encoding="utf-8")
 
-    assert gemini_key_path(environ={"EMAILS_ASSISTANT_GEMINI_KEY": str(chosen)}, root=root) == chosen
-    assert gemini_key_path(environ={"EMAILS_ASSISTANT_GEMINI_KEY": str(tmp_path / "missing.json")}, root=root) is None
-    assert gemini_key_path(environ={}, root=root) == keys / "one.json"
+    assert gemini_key_path(root=root) is None
+    one = keys / "one.json"
+    one.write_text("{}", encoding="utf-8")
+    assert gemini_key_path(root=root) == one
     (keys / "two.json").write_text("{}", encoding="utf-8")
-    assert gemini_key_path(environ={}, root=root) is None
+    assert gemini_key_path(root=root) is None
 
 
 def test_enterprise_client_uses_the_service_account_file(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
