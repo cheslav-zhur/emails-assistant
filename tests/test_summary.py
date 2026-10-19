@@ -143,6 +143,7 @@ def test_enterprise_client_uses_the_service_account_file(tmp_path: Path, caplog:
     assert seen["project"] == "proj-1"
     assert seen["location"] == "global"
     assert seen["credentials"] is creds
+    assert seen["http_options"] == {"timeout": 180_000}
     assert "api_key" not in seen
     assert text == "Ok."
     assert "not-a-real-key" not in caplog.text

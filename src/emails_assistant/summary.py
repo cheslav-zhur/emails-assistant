@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 MODEL = "gemini-3.8-flash"
 LOCATION = "global"
+_HTTP_TIMEOUT_MS = 180_000
 _SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 _INSTRUCTION = (
     "Summarize what is important across both mailboxes as one pool, "
@@ -81,6 +82,7 @@ def _enterprise_client(key_path: Path) -> Any:
         project=project_id.strip(),
         location=LOCATION,
         credentials=credentials,
+        http_options={"timeout": _HTTP_TIMEOUT_MS},
     )
 
 
