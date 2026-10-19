@@ -147,11 +147,15 @@ run_container() {
     -e "EMAILS_ASSISTANT_DAILY_DIR=$container_daily"
     -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}"
   )
-  if [[ "$host_daily" != "$ROOT/"* ]]; then
-    args+=(-v "$host_daily:$CONTAINER_DAILY")
+  args+=(
+    -v "$ROOT/src/emails_assistant:$CONTAINER_ROOT/src/emails_assistant:ro"
+    -v "$ROOT/src/shared.py:$CONTAINER_ROOT/src/shared.py:ro"
+    -v "$host_daily:$container_daily"
+  )
+  if [[ -d "$ROOT/keys" ]]; then
+    args+=(-v "$ROOT/keys:$CONTAINER_ROOT/keys:ro")
   fi
   args+=(
-    -v "$ROOT:$CONTAINER_ROOT"
     -v /etc/localtime:/etc/localtime:ro
     -w "$CONTAINER_ROOT"
     "$IMAGE"

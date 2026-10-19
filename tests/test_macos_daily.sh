@@ -267,6 +267,18 @@ EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
 EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
 "$SCRIPT"
 [[ "$(cat "$IO_DIR/docker_args")" == *"EMAILS_ASSISTANT_DAILY_DIR=/workspaces/emails-assistant/digests"* ]] || fail "container day dir: $(cat "$IO_DIR/docker_args")"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/src/emails_assistant:/workspaces/emails-assistant/src/emails_assistant:ro"* ]] || fail "mail package was not mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/src/shared.py:/workspaces/emails-assistant/src/shared.py:ro"* ]] || fail "shared.py was not mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/digests:/workspaces/emails-assistant/digests"* ]] || fail "digests/ was not mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/digests:/workspaces/emails-assistant/digests:ro"* ]] || fail "digests/ was mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT:/workspaces/emails-assistant "* ]] || fail "the whole repo was mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/.env"* ]] || fail ".env was mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/src/login:"* ]] || fail "login package was mounted"
+if [[ -d "$ROOT/keys" ]]; then
+  [[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/keys:/workspaces/emails-assistant/keys:ro"* ]] || fail "keys/ was not mounted read-only"
+else
+  [[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/keys:"* ]] || fail "missing keys/ was mounted"
+fi
 [[ "$(cat "$IO_DIR/docker_args")" != *"Application Support"* ]] || fail "day file still uses Application Support"
 [[ "$(cat "$IO_DIR/docker_args")" != *":/daily"* ]] || fail "default run still mounts /daily"
 [[ "$(cat "$ROOT/digests/2026-09-29.txt")" == "from-container" ]] || fail "default run did not write digests/"

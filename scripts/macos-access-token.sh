@@ -380,7 +380,8 @@ cmd_login() {
     docker_args+=(-e "EMAILS_ASSISTANT_LOGIN_TIMEOUT=${EMAILS_ASSISTANT_LOGIN_TIMEOUT}")
   fi
   docker_args+=(
-    -v "${ROOT}:/workspaces/emails-assistant"
+    -v "$ROOT/src/login:/workspaces/emails-assistant/src/login:ro"
+    -v "$ROOT/src/shared.py:/workspaces/emails-assistant/src/shared.py:ro"
     -w /workspaces/emails-assistant
     "$image"
     python3 -m login "$alias" --oauth-port "$port" --no-browser
