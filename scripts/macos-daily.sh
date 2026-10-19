@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAILURE="Daily digest did not run."
+SUMMARY_MISS="Summary did not run."
 IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
 CONTAINER_ROOT="/workspaces/emails-assistant"
 CONTAINER_DAILY="/daily"
@@ -41,6 +42,10 @@ before_eight() {
 
 today_file() {
   printf '%s/%s.txt' "$(daily_dir)" "$(day_stamp)"
+}
+
+miss_marker() {
+  printf '%s/%s.summary-miss' "$(daily_dir)" "$(day_stamp)"
 }
 
 image_stamp() {
@@ -165,12 +170,19 @@ try_once() {
     return 1
   fi
   file="$(today_file)"
-  result="$(run_container "$payload")" || return 1
+  local status=0
+  result="$(run_container "$payload")" || status=$?
   result="${result//$'\n'/}"
-  if [[ ! -f "$file" || ! "$result" =~ ^[0-9]+$ ]]; then
-    return 1
+  if [[ "$status" -eq 0 && -f "$file" && "$result" =~ ^[0-9]+$ ]]; then
+    notify "$result"
+    return 0
   fi
-  notify "$result"
+  if [[ "$result" == "$SUMMARY_MISS" && ! -f "$file" ]]; then
+    : >"$(miss_marker)"
+    notify "$SUMMARY_MISS"
+    return 2
+  fi
+  return 1
 }
 
 main() {
@@ -183,10 +195,12 @@ main() {
     if [[ "$(day_stamp)" != "$start_day" ]] || before_eight; then
       return 0
     fi
-    if [[ -f "$(today_file)" ]]; then
+    if [[ -f "$(today_file)" || -f "$(miss_marker)" ]]; then
       return 0
     fi
-    if try_once; then
+    local status=0
+    try_once || status=$?
+    if [[ "$status" -eq 0 || "$status" -eq 2 ]]; then
       return 0
     fi
     if ((notified == 0)); then

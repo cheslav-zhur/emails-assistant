@@ -51,11 +51,11 @@ If an access token is missing, expired, or rejected, the mail command stops with
 
 ### Daily file on the Mac
 
-`scripts/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists or the local calendar day ends.
+`scripts/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists, a summary miss is recorded, or the local calendar day ends.
 
 Each try calls `one-shot` only when Docker is running. That stdout stays in memory and is piped to `docker run --rm -i -u vscode` of the image below. The repo is mounted at `/workspaces/emails-assistant`. The day file is `digests/` on that mount. The Mac timezone comes from `/etc/localtime`. The container imports the mounted package. The script does not attach to the open Dev Container and does not pip install.
 
-The banner is `osascript` `display notification`. A success shows only the count. A failure shows `Daily digest did not run.` once per failure streak. The notification does not open the file.
+The banner is `osascript` `display notification`. A success shows only the count. A mailbox, token, or Docker failure shows `Daily digest did not run.` once per failure streak and retries every 15 minutes. A summary miss is container stdout exactly `Summary did not run.` with no day file: the script writes `digests/YYYY-MM-DD.summary-miss`, shows that sentence once, and does not call Gemini again that local day. The marker is not a `*.txt` file, so the window stays on the last day file. The next local day ignores the marker. The notification does not open the file.
 
 On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:daily`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
 
@@ -67,7 +67,7 @@ The 08:00 run builds that image only when it is missing or `requirements.txt` ha
 
 Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 
-The same repo mount includes gitignored `keys/`. One service-account JSON in that directory is how the morning container calls Gemini. The host does not mint that token. The private key stays out of git.
+The same repo mount includes gitignored `keys/`. One service-account JSON in that directory is how the morning container calls Gemini. This is the current store for that key, instead of a `gemini-caller` Keychain item. The host does not mint the token. Mailbox OAuth stays in Keychain. The private key stays out of git.
 
 **Keychain write `ps` check.** Not observed in this session: the Linux Dev Container cannot run `security`. The script passes the mailbox JSON to `security add-generic-password -w`, so that JSON can show in the process list for the length of the write. The refresh body goes to curl on stdin, not as a curl argument. Do not paste a token into this doc when the Mac check is run.
 
