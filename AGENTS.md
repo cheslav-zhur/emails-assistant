@@ -19,7 +19,7 @@
 |-------|--------|
 | Language | Python 3.12+ |
 | Mail access | Gmail API + OAuth |
-| Scope | `https://www.googleapis.com/auth/gmail.readonly` |
+| Scope | Mail: `https://www.googleapis.com/auth/gmail.readonly`. Gemini service account: `https://www.googleapis.com/auth/cloud-platform` |
 | Credential store | Mailbox OAuth in macOS Keychain (no biometrics). Gemini service account: one JSON in gitignored `keys/`, for now |
 | Account aliases | `email1`, `email2` (real addresses only in local `.env` / Keychain) |
 | Deps | pinned in `requirements.txt` / `pyproject.toml` |
@@ -53,7 +53,7 @@ docs/solutions/
 
 - Never commit real email addresses, OAuth tokens, `.env`, or real mail bodies/fixtures
 - Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is the one JSON in gitignored `keys/`; the morning container reads it from the repo mount. Linux container gets an ephemeral Gmail token inject only
-- Scope: read mail only unless explicitly expanded
+- Scope: mailbox OAuth stays `https://www.googleapis.com/auth/gmail.readonly`. The Gemini service account requests `https://www.googleapis.com/auth/cloud-platform`. Do not add further scopes unless explicitly expanded
 - Do not `pip`/`uv`/`npm` install until the user says **ok** / **go ahead** (opening Dev Container is an explicit go for `postCreate` only — details in `docs/dev.md`)
 - Prefer offline; network for package managers / Google APIs only when needed
 - Do not push personal mail content to public remotes or unrelated external APIs
