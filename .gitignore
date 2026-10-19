@@ -27,5 +27,8 @@ build/
 .idea/
 .vscode/
 
+# morning day files (mail text stays out of git)
+digests/
+
 # local worktrees
 .worktrees/

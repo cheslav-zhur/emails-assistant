@@ -40,17 +40,16 @@ class DailyDecision:
     failure: str | None = None
 
 
-def resolve_daily_dir(
-    *,
-    environ: Mapping[str, str] | None = None,
-    home: Path | None = None,
-) -> Path:
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def resolve_daily_dir(*, environ: Mapping[str, str] | None = None) -> Path:
     env = os.environ if environ is None else environ
     override = env.get("EMAILS_ASSISTANT_DAILY_DIR")
     if override:
         return Path(override)
-    base = Path.home() if home is None else home
-    return base / "Library" / "Application Support" / "emails-assistant" / "digests"
+    return _repo_root() / "digests"
 
 
 def decide_daily(

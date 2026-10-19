@@ -248,4 +248,25 @@ run_agent
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "later try wrote nothing"
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second failure banner after re-login"
 
+# No override: the day file is digests/ on the repo mount, not Application Support.
+reset_io "2026-09-29 10:30:00"
+arm_success
+rm -f "$ROOT/digests/2026-09-29.txt"
+printf '%s' "$ROOT/digests/2026-09-29.txt" >"$IO_DIR/write_path"
+EMAILS_ASSISTANT_DATE="$BIN/date-stub" \
+EMAILS_ASSISTANT_SLEEP="$BIN/sleep-stub" \
+EMAILS_ASSISTANT_OSASCRIPT="$BIN/osascript-stub" \
+EMAILS_ASSISTANT_ONE_SHOT="$BIN/oneshot-stub" \
+EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
+EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
+EMAILS_ASSISTANT_DAILY_DIR= \
+EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
+EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
+"$SCRIPT"
+[[ "$(cat "$IO_DIR/docker_args")" == *"EMAILS_ASSISTANT_DAILY_DIR=/workspaces/emails-assistant/digests"* ]] || fail "container day dir: $(cat "$IO_DIR/docker_args")"
+[[ "$(cat "$IO_DIR/docker_args")" != *"Application Support"* ]] || fail "day file still uses Application Support"
+[[ "$(cat "$IO_DIR/docker_args")" != *":/daily"* ]] || fail "default run still mounts /daily"
+[[ "$(cat "$ROOT/digests/2026-09-29.txt")" == "from-container" ]] || fail "default run did not write digests/"
+rm -f "$ROOT/digests/2026-09-29.txt"
+
 echo "ok"

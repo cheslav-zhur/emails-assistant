@@ -53,7 +53,7 @@ If an access token is missing, expired, or rejected, the mail command stops with
 
 `scripts/macos-daily.sh` is a per-user LaunchAgent. `StartCalendarInterval` is 08:00 local time, and `RunAtLoad` covers a login after that. The agent does not wake the Mac. Before 08:00 the script exits with no file and no banner. After 08:00 it retries every 15 minutes until today's file exists or the local calendar day ends.
 
-Each try calls `one-shot` only when Docker is running. That stdout stays in memory and is piped to `docker run --rm -i -u vscode` of the image below. The repo is mounted at `/workspaces/emails-assistant`, the day-file directory at `/daily`, and the Mac timezone comes from `/etc/localtime`. The container imports the mounted package. The script does not attach to the open Dev Container and does not pip install.
+Each try calls `one-shot` only when Docker is running. That stdout stays in memory and is piped to `docker run --rm -i -u vscode` of the image below. The repo is mounted at `/workspaces/emails-assistant`. The day file is `digests/` on that mount. The Mac timezone comes from `/etc/localtime`. The container imports the mounted package. The script does not attach to the open Dev Container and does not pip install.
 
 The banner is `osascript` `display notification`. A success shows only the count. A failure shows `Daily digest did not run.` once per failure streak. The notification does not open the file.
 
@@ -65,7 +65,7 @@ scripts/macos-install-daily-agent.sh
 
 The 08:00 run builds that image only when it is missing or `requirements.txt` has changed. Other mornings do not rebuild it.
 
-Day files land in `~/Library/Application Support/emails-assistant/digests` unless `EMAILS_ASSISTANT_DAILY_DIR` is set.
+Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 
 **Keychain write `ps` check.** Not observed in this session: the Linux Dev Container cannot run `security`. The script passes the mailbox JSON to `security add-generic-password -w`, so that JSON can show in the process list for the length of the write. The refresh body goes to curl on stdin, not as a curl argument. Do not paste a token into this doc when the Mac check is run.
 

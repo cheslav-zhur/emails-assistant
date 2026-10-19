@@ -301,11 +301,19 @@ def test_summary_input_uses_body_then_snippet_and_drops_the_boundary(tmp_path: P
     assert "Date:" not in text.split("snippet-only", 1)[1]
 
 
-def test_daily_dir_defaults_to_library_and_honors_override(tmp_path: Path) -> None:
-    home = tmp_path / "home"
+def test_daily_dir_defaults_to_repo_digests_and_honors_override(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
     custom = tmp_path / "custom"
 
-    assert resolve_daily_dir(environ={}, home=home) == (
-        home / "Library" / "Application Support" / "emails-assistant" / "digests"
-    )
-    assert resolve_daily_dir(environ={"EMAILS_ASSISTANT_DAILY_DIR": str(custom)}, home=home) == custom
+    chosen = resolve_daily_dir(environ={})
+
+    assert chosen == repo / "digests"
+    assert "Application Support" not in chosen.parts
+    assert resolve_daily_dir(environ={"EMAILS_ASSISTANT_DAILY_DIR": str(custom)}) == custom
+
+
+def test_gitignore_ignores_digests() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "digests/" in ignored

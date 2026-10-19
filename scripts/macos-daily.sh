@@ -15,7 +15,7 @@ daily_dir() {
     printf '%s' "$EMAILS_ASSISTANT_DAILY_DIR"
     return
   fi
-  printf '%s' "$HOME/Library/Application Support/emails-assistant/digests"
+  printf '%s' "$ROOT/digests"
 }
 
 date_local() {
@@ -124,21 +124,34 @@ notify() {
 }
 
 run_container() {
-  local host_daily tz
+  local host_daily tz container_daily
+  local args
   host_daily="$(daily_dir)"
   tz="$(host_tz)"
   mkdir -p "$host_daily"
-  printf '%s' "$1" | docker_cmd run --rm -i -u vscode \
-    -e "TZ=$tz" \
-    -e "PYTHONPATH=$CONTAINER_ROOT/src" \
-    -e "EMAILS_ASSISTANT_DAILY_DIR=$CONTAINER_DAILY" \
-    -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}" \
-    -v "$ROOT:$CONTAINER_ROOT" \
-    -v "$host_daily:$CONTAINER_DAILY" \
-    -v /etc/localtime:/etc/localtime:ro \
-    -w "$CONTAINER_ROOT" \
-    "$IMAGE" \
+  if [[ "$host_daily" == "$ROOT/"* ]]; then
+    container_daily="$CONTAINER_ROOT${host_daily#"$ROOT"}"
+  else
+    container_daily="$CONTAINER_DAILY"
+  fi
+  args=(
+    run --rm -i -u vscode
+    -e "TZ=$tz"
+    -e "PYTHONPATH=$CONTAINER_ROOT/src"
+    -e "EMAILS_ASSISTANT_DAILY_DIR=$container_daily"
+    -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}"
+  )
+  if [[ "$host_daily" != "$ROOT/"* ]]; then
+    args+=(-v "$host_daily:$CONTAINER_DAILY")
+  fi
+  args+=(
+    -v "$ROOT:$CONTAINER_ROOT"
+    -v /etc/localtime:/etc/localtime:ro
+    -w "$CONTAINER_ROOT"
+    "$IMAGE"
     python3 -m emails_assistant.cli daily
+  )
+  printf '%s' "$1" | docker_cmd "${args[@]}"
 }
 
 try_once() {
