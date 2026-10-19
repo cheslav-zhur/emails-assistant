@@ -91,6 +91,9 @@ fi
 if [[ -f "$dir/docker_stdout" ]]; then
   cat "$dir/docker_stdout"
 fi
+if [[ -f "$dir/docker_exit" ]]; then
+  exit "$(cat "$dir/docker_exit")"
+fi
 EOF
 
 chmod +x "$BIN/date-stub" "$BIN/sleep-stub" "$BIN/osascript-stub" "$BIN/oneshot-stub" "$BIN/docker-stub"
@@ -115,7 +118,7 @@ payloads() {
 
 arm_success() {
   payloads >"$IO_DIR/shot_stdout"
-  rm -f "$IO_DIR/shot_fail" "$IO_DIR/docker_down"
+  rm -f "$IO_DIR/shot_fail" "$IO_DIR/docker_down" "$IO_DIR/docker_exit"
   printf '%s\n' "from-container" >"$IO_DIR/write_body"
   printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
   printf '%s\n' "5" >"$IO_DIR/docker_stdout"
@@ -247,5 +250,92 @@ run_agent
 [[ "$(sed -n '2p' "$IO_DIR/banners")" == "2" ]] || fail "later try after re-login"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "later try wrote nothing"
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second failure banner after re-login"
+
+# No override: the day file is digests/ on the repo mount, not Application Support.
+reset_io "2026-09-29 10:30:00"
+arm_success
+rm -f "$ROOT/digests/2026-09-29.txt"
+printf '%s' "$ROOT/digests/2026-09-29.txt" >"$IO_DIR/write_path"
+EMAILS_ASSISTANT_DATE="$BIN/date-stub" \
+EMAILS_ASSISTANT_SLEEP="$BIN/sleep-stub" \
+EMAILS_ASSISTANT_OSASCRIPT="$BIN/osascript-stub" \
+EMAILS_ASSISTANT_ONE_SHOT="$BIN/oneshot-stub" \
+EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
+EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
+EMAILS_ASSISTANT_DAILY_DIR= \
+EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
+EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
+"$SCRIPT"
+[[ "$(cat "$IO_DIR/docker_args")" == *"EMAILS_ASSISTANT_DAILY_DIR=/workspaces/emails-assistant/digests"* ]] || fail "container day dir: $(cat "$IO_DIR/docker_args")"
+[[ "$(cat "$IO_DIR/docker_args")" != *"Application Support"* ]] || fail "day file still uses Application Support"
+[[ "$(cat "$IO_DIR/docker_args")" != *":/daily"* ]] || fail "default run still mounts /daily"
+[[ "$(cat "$ROOT/digests/2026-09-29.txt")" == "from-container" ]] || fail "default run did not write digests/"
+rm -f "$ROOT/digests/2026-09-29.txt"
+
+# Summary miss: one banner, a non-txt marker, the prior day file stays.
+reset_io "2026-09-29 10:30:00"
+payloads >"$IO_DIR/shot_stdout"
+printf '%s\n' "Summary did not run." >"$IO_DIR/docker_stdout"
+printf '1\n' >"$IO_DIR/docker_exit"
+printf '%s\n' "prior-day" >"$DAY_DIR/2026-09-28.txt"
+run_agent
+[[ ! -e "$DAY_DIR/2026-09-29.txt" ]] || fail "summary miss wrote a day file"
+[[ -f "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "missing summary miss marker"
+[[ "$(find "$DAY_DIR" -name '*.txt' -print | wc -l | tr -d ' ')" -eq 1 ]] || fail "miss added a txt"
+[[ "$(cat "$DAY_DIR/2026-09-28.txt")" == "prior-day" ]] || fail "miss changed the prior day file"
+[[ "$(cat "$IO_DIR/banners")" == "Summary did not run." ]] || fail "summary banner: $(cat "$IO_DIR/banners")"
+[[ "$(cat "$IO_DIR/banners")" != *"$SUBJECT"* ]] || fail "summary banner leaked"
+[[ ! -s "$IO_DIR/sleeps" ]] || fail "summary miss retried"
+[[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "summary miss one-shot count"
+
+# Same local day: no second Gemini call and no second banner.
+: >"$IO_DIR/shots"
+: >"$IO_DIR/banners"
+: >"$IO_DIR/docker_cmds"
+: >"$IO_DIR/sleeps"
+run_agent
+[[ ! -s "$IO_DIR/shots" ]] || fail "second process called one-shot"
+[[ ! -s "$IO_DIR/docker_cmds" ]] || fail "second process called docker"
+[[ ! -s "$IO_DIR/banners" ]] || fail "second summary banner"
+[[ "$(cat "$DAY_DIR/2026-09-28.txt")" == "prior-day" ]] || fail "second process changed the prior day file"
+
+# The next local day ignores yesterday's marker.
+printf '%s\n' "2026-09-30 10:30:00" >"$IO_DIR/now"
+arm_success
+printf '%s' "$DAY_DIR/2026-09-30.txt" >"$IO_DIR/write_path"
+: >"$IO_DIR/shots"
+: >"$IO_DIR/banners"
+: >"$IO_DIR/docker_cmds"
+run_agent
+[[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "next day did not run"
+[[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "next day banner: $(cat "$IO_DIR/banners")"
+[[ -f "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "next day removed yesterday's marker"
+[[ "$(cat "$DAY_DIR/2026-09-30.txt")" == "from-container" ]] || fail "next day wrote nothing"
+
+# A digest failure still retries and does not leave a summary marker.
+reset_io "2026-09-29 10:30:00"
+payloads >"$IO_DIR/shot_stdout"
+printf '%s\n' "Daily digest did not run." >"$IO_DIR/docker_stdout"
+printf '1\n' >"$IO_DIR/docker_exit"
+cat >"$IO_DIR/after_sleep" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="${EMAILS_ASSISTANT_STUB_DIR:?}"
+rm -f "$dir/docker_exit"
+printf '%s\n' "2026-09-29 10:45:00" >"$dir/now"
+printf '%s\n%s' \
+  '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
+  '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
+printf '%s\n' "from-container" >"$dir/write_body"
+printf '%s\n' "3" >"$dir/docker_stdout"
+EOF
+printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
+chmod +x "$IO_DIR/after_sleep"
+run_agent
+[[ ! -e "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "digest failure wrote a summary marker"
+[[ "$(sed -n '1p' "$IO_DIR/banners")" == "$FAILURE" ]] || fail "digest failure banner"
+[[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second digest failure banner"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "3" ]] || fail "later count after digest failure"
+[[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "digest failure did not wait 15 minutes"
 
 echo "ok"

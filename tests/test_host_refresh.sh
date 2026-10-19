@@ -356,6 +356,7 @@ run_args="$(cat "$IO_DIR/docker_args.$run_n")"
 [[ "$run_args" != *" exec "* ]] || fail "login attached to a dev container"
 [[ "$run_args" == *" login email1 "* ]] || fail "container did not run login for email1"
 [[ "$run_args" == *" --oauth-port "* ]] || fail "container was not told the published port"
+[[ "$run_args" != *"EMAILS_ASSISTANT_LOGIN_TIMEOUT"* ]] || fail "unset login timeout was forwarded"
 [[ "$run_args" != *"$SECRET_SENTINEL"* ]] || fail "client secret was a docker argument"
 [[ "$(cat "$IO_DIR/docker_stdin.$run_n")" == *"$SECRET_SENTINEL"* ]] || fail "client secret was not on container stdin"
 [[ "$(cat "$IO_DIR/opened_url")" == "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2F" ]] || fail "browser was not opened on the auth URL"
@@ -368,6 +369,18 @@ published = next(arg for arg in args if arg.startswith("127.0.0.1:")).split(":")
 port_flag = args[args.index("--oauth-port") + 1]
 assert published == port_flag
 PY
+
+export EMAILS_ASSISTANT_LOGIN_TIMEOUT=90
+stdout="$(run login email1 2>"$IO_DIR/err")"
+[[ -z "$stdout" ]] || fail "timed login echoed the mailbox token"
+timed_args=""
+for path in "$IO_DIR"/docker_args.*; do
+  if grep -q 'EMAILS_ASSISTANT_LOGIN_TIMEOUT=90' "$path"; then
+    timed_args="$(cat "$path")"
+  fi
+done
+[[ -n "$timed_args" ]] || fail "set login timeout was not forwarded"
+unset EMAILS_ASSISTANT_LOGIN_TIMEOUT
 
 reset_io email1
 install_mailbox email1 ya29-login-old "2026-09-28T12:10:00Z"

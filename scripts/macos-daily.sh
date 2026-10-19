@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAILURE="Daily digest did not run."
+SUMMARY_MISS="Summary did not run."
 IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
 CONTAINER_ROOT="/workspaces/emails-assistant"
 CONTAINER_DAILY="/daily"
@@ -15,7 +16,7 @@ daily_dir() {
     printf '%s' "$EMAILS_ASSISTANT_DAILY_DIR"
     return
   fi
-  printf '%s' "$HOME/Library/Application Support/emails-assistant/digests"
+  printf '%s' "$ROOT/digests"
 }
 
 date_local() {
@@ -41,6 +42,10 @@ before_eight() {
 
 today_file() {
   printf '%s/%s.txt' "$(daily_dir)" "$(day_stamp)"
+}
+
+miss_marker() {
+  printf '%s/%s.summary-miss' "$(daily_dir)" "$(day_stamp)"
 }
 
 image_stamp() {
@@ -124,21 +129,34 @@ notify() {
 }
 
 run_container() {
-  local host_daily tz
+  local host_daily tz container_daily
+  local args
   host_daily="$(daily_dir)"
   tz="$(host_tz)"
   mkdir -p "$host_daily"
-  printf '%s' "$1" | docker_cmd run --rm -i -u vscode \
-    -e "TZ=$tz" \
-    -e "PYTHONPATH=$CONTAINER_ROOT/src" \
-    -e "EMAILS_ASSISTANT_DAILY_DIR=$CONTAINER_DAILY" \
-    -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}" \
-    -v "$ROOT:$CONTAINER_ROOT" \
-    -v "$host_daily:$CONTAINER_DAILY" \
-    -v /etc/localtime:/etc/localtime:ro \
-    -w "$CONTAINER_ROOT" \
-    "$IMAGE" \
+  if [[ "$host_daily" == "$ROOT/"* ]]; then
+    container_daily="$CONTAINER_ROOT${host_daily#"$ROOT"}"
+  else
+    container_daily="$CONTAINER_DAILY"
+  fi
+  args=(
+    run --rm -i -u vscode
+    -e "TZ=$tz"
+    -e "PYTHONPATH=$CONTAINER_ROOT/src"
+    -e "EMAILS_ASSISTANT_DAILY_DIR=$container_daily"
+    -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}"
+  )
+  if [[ "$host_daily" != "$ROOT/"* ]]; then
+    args+=(-v "$host_daily:$CONTAINER_DAILY")
+  fi
+  args+=(
+    -v "$ROOT:$CONTAINER_ROOT"
+    -v /etc/localtime:/etc/localtime:ro
+    -w "$CONTAINER_ROOT"
+    "$IMAGE"
     python3 -m emails_assistant.cli daily
+  )
+  printf '%s' "$1" | docker_cmd "${args[@]}"
 }
 
 try_once() {
@@ -152,12 +170,19 @@ try_once() {
     return 1
   fi
   file="$(today_file)"
-  result="$(run_container "$payload")" || return 1
+  local status=0
+  result="$(run_container "$payload")" || status=$?
   result="${result//$'\n'/}"
-  if [[ ! -f "$file" || ! "$result" =~ ^[0-9]+$ ]]; then
-    return 1
+  if [[ "$status" -eq 0 && -f "$file" && "$result" =~ ^[0-9]+$ ]]; then
+    notify "$result"
+    return 0
   fi
-  notify "$result"
+  if [[ "$result" == "$SUMMARY_MISS" && ! -f "$file" ]]; then
+    : >"$(miss_marker)"
+    notify "$SUMMARY_MISS"
+    return 2
+  fi
+  return 1
 }
 
 main() {
@@ -170,10 +195,12 @@ main() {
     if [[ "$(day_stamp)" != "$start_day" ]] || before_eight; then
       return 0
     fi
-    if [[ -f "$(today_file)" ]]; then
+    if [[ -f "$(today_file)" || -f "$(miss_marker)" ]]; then
       return 0
     fi
-    if try_once; then
+    local status=0
+    try_once || status=$?
+    if [[ "$status" -eq 0 || "$status" -eq 2 ]]; then
       return 0
     fi
     if ((notified == 0)); then

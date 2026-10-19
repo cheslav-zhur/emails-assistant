@@ -32,6 +32,7 @@ from emails_assistant.daily import (
     DailyMessage,
     MailboxRead,
     decide_daily,
+    render_summary_input,
     resolve_daily_dir,
 )
 
@@ -145,7 +146,12 @@ def _run_daily() -> None:
     reads: list[MailboxRead] = []
     try:
         for alias, creds in zip(aliases, credentials, strict=True):
-            summaries = search_messages(creds, query=query, max_results=None)
+            summaries = search_messages(
+                creds,
+                query=query,
+                max_results=None,
+                include_body=True,
+            )
             # ``after:`` already dropped mail at the previous file's epoch.
             messages = tuple(
                 DailyMessage(
@@ -154,6 +160,7 @@ def _run_daily() -> None:
                     sender=item.sender,
                     date=item.date,
                     snippet=item.snippet,
+                    body=item.body,
                 )
                 for item in summaries
             )
@@ -161,7 +168,20 @@ def _run_daily() -> None:
     except Exception:
         _daily_fail()
 
-    decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads)
+    from emails_assistant.summary import gemini_key_path, summarize
+
+    mail_text = render_summary_input(tuple(reads), window_start=preview.window_start)
+    key = gemini_key_path()
+    if not mail_text:
+        summary: str | None = None
+    elif key is None:
+        summary = ""
+    else:
+        summary = summarize(mail_text, key_path=key)
+    decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads, summary=summary)
+    if decision.failure:
+        print(decision.failure)
+        raise SystemExit(1)
     if not decision.write or decision.notice is None:
         _daily_fail()
     decision.path.parent.mkdir(parents=True, exist_ok=True)

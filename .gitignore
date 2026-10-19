@@ -1,6 +1,8 @@
-# auth leftovers (credentials live in Keychain — never commit these if created by mistake)
+# mailbox auth leftovers (OAuth lives in Keychain — never commit these if created by mistake)
 secrets/
 .creds/
+# Gemini service account: one JSON, read by the morning container, not committed
+keys/
 **/token*.json
 **/client_secret*.json
 .env
@@ -26,6 +28,9 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# morning day files (mail text stays out of git)
+digests/
 
 # local worktrees
 .worktrees/
