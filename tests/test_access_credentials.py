@@ -343,6 +343,9 @@ class MailCommandAccessTokenTest(unittest.TestCase):
             def run_local_server(**kwargs: object) -> Credentials:
                 self.assertEqual(kwargs.get("authorization_prompt_message"), "")
                 self.assertEqual(kwargs.get("prompt"), "consent")
+                self.assertEqual(kwargs.get("host"), "127.0.0.1")
+                self.assertEqual(kwargs.get("bind_addr"), "0.0.0.0")
+                self.assertEqual(kwargs.get("timeout_seconds"), 180)
                 flow.authorization_url()
                 return creds
 

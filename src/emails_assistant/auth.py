@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Any, Mapping, NoReturn
@@ -16,6 +17,7 @@ from emails_assistant import config
 logger = logging.getLogger(__name__)
 
 ACCESS_RERUN_NOTICE = "Access token missing or rejected. Run the host script again."
+LOGIN_FAILED_NOTICE = "Login did not complete."
 
 
 class CredentialError(RuntimeError):
@@ -81,6 +83,17 @@ def _parse_client_json(raw: str) -> dict[str, Any]:
     return data
 
 
+def _login_timeout_seconds() -> float:
+    raw = os.environ.get("EMAILS_ASSISTANT_LOGIN_TIMEOUT", "180")
+    try:
+        timeout = float(raw)
+    except ValueError:
+        raise CredentialError(LOGIN_FAILED_NOTICE) from None
+    if timeout <= 0:
+        raise CredentialError(LOGIN_FAILED_NOTICE)
+    return timeout
+
+
 def login(
     alias: str,
     *,
@@ -91,7 +104,9 @@ def login(
     """Browser OAuth. Returns the mailbox token; the caller stores it.
 
     The client secret is accepted for this run only. Nothing is written to
-    disk or Keychain here. The authorization URL goes to stderr.
+    disk or Keychain here. The authorization URL goes to stderr. The redirect
+    host is the Mac loopback; the server listens on every interface so a
+    published container port can reach it.
     """
     from google_auth_oauthlib.flow import InstalledAppFlow
 
@@ -109,9 +124,16 @@ def login(
 
     flow.authorization_url = _authorization_url  # type: ignore[method-assign]
     logger.info("Starting OAuth for alias=%s (port=%s)", alias, oauth_port or "auto")
-    return flow.run_local_server(
-        port=oauth_port,
-        prompt="consent",
-        open_browser=open_browser,
-        authorization_prompt_message="",
-    )
+    timeout_seconds = _login_timeout_seconds()
+    try:
+        return flow.run_local_server(
+            host="127.0.0.1",
+            bind_addr="0.0.0.0",
+            port=oauth_port,
+            prompt="consent",
+            open_browser=open_browser,
+            authorization_prompt_message="",
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception:
+        raise CredentialError(LOGIN_FAILED_NOTICE) from None
