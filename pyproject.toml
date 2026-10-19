@@ -5,11 +5,11 @@ description = "Personal Gmail assistant (readonly digest first, expandable later
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "google-api-python-client==2.179.0",
+  "google-api-python-client==2.201.0",
   "google-auth==2.62.0",
   "google-genai==2.31.0",
-  "google-auth-httplib2==0.2.0",
-  "google-auth-oauthlib==1.2.2",
+  "google-auth-httplib2==0.4.4",
+  "google-auth-oauthlib==1.5.0",
   "python-dotenv==1.2.4",
 ]
 

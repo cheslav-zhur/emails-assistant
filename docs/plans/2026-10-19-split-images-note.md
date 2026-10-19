@@ -20,8 +20,8 @@ The old tag `emails-assistant:daily` goes away. `scripts/macos-daily.sh` and the
 Pins live once in `pyproject.toml`. `requirements.txt` is removed.
 
 - In `dependencies`, both images: `google-auth==2.40.3`
-- Extra `app`: `google-api-python-client==2.179.0`, `google-auth-httplib2==0.2.0`, `python-dotenv==1.2.4`
-- Extra `login`: `google-auth-oauthlib==1.2.2`
+- Extra `app`: `google-api-python-client==2.201.0`, `google-auth-httplib2==0.4.4`, `python-dotenv==1.2.4`
+- Extra `login`: `google-auth-oauthlib==1.5.0`
 - Extra `dev`: `pytest==9.1.1`, unchanged
 
 The `app` image installs `.[app]`. The `login` image installs `.[login]` and does not install the Gmail client or `python-dotenv`. `python-dotenv` is already pinned. CI installs `.[app,login,dev]`.
