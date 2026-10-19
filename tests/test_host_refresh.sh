@@ -67,10 +67,10 @@ n="$(cat "$dir/docker_n")"
 printf '%s\n' "$*" >"$dir/docker_args.$n"
 cat >"$dir/docker_stdin.$n"
 echo $((n + 1)) >"$dir/docker_n"
-if [[ -f "$dir/docker_stderr" ]]; then
+if [[ "${1:-}" == "run" && -f "$dir/docker_stderr" ]]; then
   cat "$dir/docker_stderr" >&2
 fi
-if [[ -f "$dir/docker_stdout" ]]; then
+if [[ "${1:-}" == "run" && -f "$dir/docker_stdout" ]]; then
   cat "$dir/docker_stdout"
 fi
 args=("$@")
@@ -91,8 +91,20 @@ if [[ -n "$code" ]]; then
     PYTHONPATH="$src" python3 -c "$code" <"$dir/docker_stdin.$n"
   fi
 fi
+if [[ "${1:-}" == "run" && -f "$dir/docker_status" ]]; then
+  exit "$(cat "$dir/docker_status")"
+fi
 EOF
-chmod +x "$BIN/security-stub" "$BIN/curl-stub" "$BIN/docker-stub"
+cat >"$BIN/open-stub" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="${EMAILS_ASSISTANT_STUB_DIR:?}"
+printf '%s\n' "$1" >"$dir/opened_url"
+if [[ -f "$dir/open_mode" && "$(cat "$dir/open_mode")" == "fail" ]]; then
+  exit 1
+fi
+EOF
+chmod +x "$BIN/security-stub" "$BIN/curl-stub" "$BIN/docker-stub" "$BIN/open-stub"
 
 reset_io() {
   IO_DIR="$(mktemp -d)"
@@ -313,19 +325,85 @@ cleanup_legacy
 trap - EXIT
 [[ ! -e "$legacy" ]] || fail "legacy cleanup left .creds"
 
+login_run_index() {
+  local path
+  for path in "$IO_DIR"/docker_args.*; do
+    if grep -q 'run --rm' "$path"; then
+      basename "$path" | cut -d. -f2
+      return 0
+    fi
+  done
+  fail "login did not start a one-shot container"
+}
+
+reset_io email1,email2
+install_mailbox email1 ya29-login-old "2026-09-28T12:10:00Z"
+install_mailbox email2 ya29-email2 "2026-09-28T12:10:00Z"
+email2_before="$(sec_get token/email2)"
+login_json="$(token_json ya29-login-new "2026-09-28T13:00:00Z")"
+printf '%s' "$login_json" >"$IO_DIR/docker_stdout"
+printf '%s\n' "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2F" >"$IO_DIR/docker_stderr"
+export EMAILS_ASSISTANT_OPEN="$BIN/open-stub"
+export EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp"
+stdout="$(run login email1 2>"$IO_DIR/err")"
+err="$(cat "$IO_DIR/err")"
+[[ -z "$stdout" ]] || fail "login echoed the mailbox token"
+[[ "$err" == *"https://accounts.google.com/o/oauth2/v2/auth?"* ]] || fail "auth URL missing on stderr"
+assert_no_secret_output "$err"
+run_n="$(login_run_index)"
+run_args="$(cat "$IO_DIR/docker_args.$run_n")"
+[[ "$run_args" == *" -p 127.0.0.1:"* ]] || fail "consent port was not published on loopback"
+[[ "$run_args" != *" exec "* ]] || fail "login attached to a dev container"
+[[ "$run_args" == *" login email1 "* ]] || fail "container did not run login for email1"
+[[ "$run_args" == *" --oauth-port "* ]] || fail "container was not told the published port"
+[[ "$run_args" != *"$SECRET_SENTINEL"* ]] || fail "client secret was a docker argument"
+[[ "$(cat "$IO_DIR/docker_stdin.$run_n")" == *"$SECRET_SENTINEL"* ]] || fail "client secret was not on container stdin"
+[[ "$(cat "$IO_DIR/opened_url")" == "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2F" ]] || fail "browser was not opened on the auth URL"
+[[ "$(sec_get token/email1)" == "$login_json" ]] || fail "login stdout was not stored unchanged"
+[[ "$(sec_get token/email2)" == "$email2_before" ]] || fail "login changed the other mailbox"
+python3 - "$run_args" <<'PY' || fail "published port does not match oauth port"
+import sys
+args = sys.argv[1].split()
+published = next(arg for arg in args if arg.startswith("127.0.0.1:")).split(":")[1]
+port_flag = args[args.index("--oauth-port") + 1]
+assert published == port_flag
+PY
+
 reset_io email1
 install_mailbox email1 ya29-login-old "2026-09-28T12:10:00Z"
 login_json="$(token_json ya29-login-new "2026-09-28T13:00:00Z")"
 printf '%s' "$login_json" >"$IO_DIR/docker_stdout"
-printf '%s' "https://accounts.google.com/o/oauth2/auth?test=1" >"$IO_DIR/docker_stderr"
-stdout="$(run login box-name email1 2>"$IO_DIR/err")"
-err="$(cat "$IO_DIR/err")"
-[[ -z "$stdout" ]] || fail "login echoed the mailbox token"
-[[ "$err" == *"https://accounts.google.com/o/oauth2/auth?test=1"* ]] || fail "auth URL missing on stderr"
-assert_no_secret_output "$err"
-[[ "$(cat "$IO_DIR/docker_stdin.0")" == *"$SECRET_SENTINEL"* ]] || fail "client secret was not on docker stdin"
-[[ "$(cat "$IO_DIR/docker_args.0")" != *"$SECRET_SENTINEL"* ]] || fail "client secret was a docker argument"
-[[ "$(sec_get token/email1)" == "$login_json" ]] || fail "login stdout was not stored unchanged"
+printf '%s\n' "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2F" >"$IO_DIR/docker_stderr"
+printf '%s' fail >"$IO_DIR/open_mode"
+stdout="$(run login email1 2>"$IO_DIR/err")"
+[[ -z "$stdout" ]] || fail "browser-fail login echoed the token"
+[[ "$(cat "$IO_DIR/err")" == *"https://accounts.google.com/o/oauth2/v2/auth?"* ]] || fail "auth URL missing when the browser fails"
+assert_no_secret_output "$(cat "$IO_DIR/err")"
+[[ "$(sec_get token/email1)" == "$login_json" ]] || fail "browser-fail login did not store the token"
+
+reset_io email1
+install_mailbox email1 ya29-login-old "2026-09-28T12:10:00Z"
+printf '%s' "$SECRET_SENTINEL" >"$IO_DIR/docker_stdout"
+printf '%s' 1 >"$IO_DIR/docker_status"
+set +e
+stdout="$(run login email1 2>"$IO_DIR/err")"
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || fail "denied consent exited 0"
+[[ -z "$stdout" ]] || fail "denied login printed a token"
+assert_no_secret_output "$(cat "$IO_DIR/err")"
+[[ "$(cat "$IO_DIR/err")" != *"$SECRET_SENTINEL"* ]] || fail "denied login printed the container stdout"
+[[ "$(sec_get token/email1)" == *"ya29-login-old"* ]] || fail "denied login replaced the token"
+
+reset_io email1
+set +e
+run login box-name email1 >/dev/null 2>"$IO_DIR/err"
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || fail "container login usage exited 0"
+[[ "$(cat "$IO_DIR/err")" == *"usage: login <alias>"* ]] || fail "usage did not reject a container name"
+[[ "$(cat "$IO_DIR/docker_n")" -eq 0 ]] || fail "rejected login called docker"
+unset EMAILS_ASSISTANT_OPEN EMAILS_ASSISTANT_IMAGE_STAMP
 
 if grep -R -n -e "$REFRESH_SENTINEL" -e "$SECRET_SENTINEL" \
   --exclude-dir=.git --exclude=test_host_refresh.sh "$ROOT" >/dev/null

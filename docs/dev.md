@@ -6,7 +6,7 @@ Local/dev setup for **emails-assistant**. Product decisions live in `AGENTS.md`;
 
 1. Open this repo in the Dev Container (details below).
 2. `cp .env.example .env` — real addresses only in local `.env` (gitignored).
-3. On the Mac, log in each mailbox: `scripts/macos-access-token.sh login <container> <alias>`.
+3. On the Mac, with Docker running, log in each mailbox: `scripts/macos-access-token.sh login email1`, then the same command with `email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
 4. `scripts/macos-access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
 5. Morning agent (Mac, logged-in GUI session): `scripts/macos-install-daily-agent.sh`.
 
@@ -37,13 +37,13 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 
 ### Host vs container (auth)
 
-macOS **Keychain** is the only durable store for the OAuth client secret and each mailbox token. Login and every Keychain read/write stay on the Mac. The container never calls Keychain and never calls Google's token endpoint.
+macOS **Keychain** is the only durable store for the OAuth client secret and each mailbox token. Keychain reads and writes stay on the Mac. Mail commands do not call Google's token endpoint.
 
 `scripts/macos-access-token.sh` is the host script. It refreshes a mailbox access token when the stored expiry is missing or already inside the 3 minute 45 second window, then hands off `access_token` and `expiry` only.
 
 - **Open Dev Container.** `inject <container>` writes one file per alias at `/dev/shm/emails-assistant/access-<alias>.json` (mode `0600`, owner `vscode`) via `docker exec -i -u vscode`. `smoke`, `digest`, `search`, and `show` read those files. They do not refresh.
 - **One-shot.** `one-shot` prints one JSON object per mailbox on stdout and does not read or write the Dev Container tmpfs. Keep that stdout in memory. Do not write it to the day file, the repo, shell history, or logs.
-- **Login.** `login <container> <alias>` reads the client secret from Keychain and pipes it to the container stdin. The authorization URL is on stderr. The mailbox-token JSON comes back on container stdout and is stored in Keychain unchanged. The container does not keep a credential file.
+- **Login.** `login <alias>` is the only way to store a new refresh token. It uses the morning image `emails-assistant:daily` (built when missing or when `requirements.txt` changed) and starts one container with `docker run --rm`. The consent port is published on `127.0.0.1`; the owner does not pass a container name or forward a port. The client secret is piped to that container on stdin for the run. The Mac opens the system browser. Google redirects to the published port. The mailbox token comes back on container stdout and is stored in Keychain unchanged. The command does not print the token. The container then exits and keeps neither the secret nor the token. If the browser cannot be opened, the authorization URL is printed and the command still waits. If consent is denied or the wait ends, the command fails with `Login did not complete.` and the previous token for that alias stays.
 
 If an access token is missing, expired, or rejected, the mail command stops with `Access token missing or rejected. Run the host script again.` It does not restart the container. If Google rejects the refresh token, the host script prints `Login is required for <alias>. The refresh token was rejected.` on stderr and does not print a token.
 
@@ -89,7 +89,6 @@ Inside the container, after `inject`. Mail commands read `/dev/shm/emails-assist
 | `emails-assistant show ALIAS MESSAGE_ID` | Headers and plain body of one message |
 | `emails-assistant smoke ALIAS` | List one message as a sanity check |
 | `emails-assistant daily` | Read both mailboxes from stdin JSON lines, write today's file, print the count |
-| `emails-assistant login ALIAS` | Browser OAuth; mailbox-token JSON on stdout. The host script calls this. |
 
 On the Mac (`scripts/macos-access-token.sh`):
 
@@ -97,7 +96,7 @@ On the Mac (`scripts/macos-access-token.sh`):
 |---------|----------------|
 | `inject <container>` | Refresh due tokens and write access tokens into the container |
 | `one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
-| `login <container> <alias>` | Run container login and store the mailbox token in Keychain |
+| `login <alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
 
 `scripts/macos-install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
 

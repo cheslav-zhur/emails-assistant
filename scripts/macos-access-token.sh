@@ -327,21 +327,66 @@ cmd_inject() {
   inject_payloads "$container"
 }
 
+known_alias() {
+  local alias="$1" name
+  while IFS= read -r name; do
+    if [[ "$name" == "$alias" ]]; then
+      return 0
+    fi
+  done < <(accounts)
+  return 1
+}
+
+login_port() {
+  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+open_auth_url() {
+  local line opener="${EMAILS_ASSISTANT_OPEN:-open}"
+  while IFS= read -r line; do
+    printf '%s\n' "$line" >&2
+    if [[ "$line" == https://* ]]; then
+      "$opener" "$line" || true
+    fi
+  done
+}
+
+login_failed() {
+  echo "Login did not complete." >&2
+  return 1
+}
+
 cmd_login() {
-  local container="${1:-}" alias="${2:-}" client token_json
-  if [[ -z "$container" || -z "$alias" || -n "${3:-}" ]]; then
-    echo "error: usage: login <container> <alias>" >&2
+  local alias="${1:-}" client port token_json image timeout_env=()
+  if [[ -z "${EMAILS_ASSISTANT_SECURITY:-}" ]]; then
+    need_macos || return 1
+  fi
+  if [[ -z "$alias" || -n "${2:-}" ]] || ! known_alias "$alias"; then
+    echo "error: usage: login <alias>" >&2
     return 1
   fi
   clear_legacy_creds || return 1
   client="$(security_cmd find-generic-password -s "$SERVICE" -a "oauth-client" -w)" || return 1
+  port="$(login_port)" || return 1
+  image="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+  if [[ -n "${EMAILS_ASSISTANT_LOGIN_TIMEOUT:-}" ]]; then
+    timeout_env=(-e "EMAILS_ASSISTANT_LOGIN_TIMEOUT=${EMAILS_ASSISTANT_LOGIN_TIMEOUT}")
+  fi
+  "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
-    printf '%s' "$client" | docker_cmd exec -i -u vscode "$container" \
-      python3 -m emails_assistant.cli login "$alias" --no-browser
-  )" || return 1
+    printf '%s' "$client" | docker_cmd run --rm -i -u vscode \
+      -p "127.0.0.1:${port}:${port}" \
+      -e "PYTHONPATH=/workspaces/emails-assistant/src" \
+      -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}" \
+      "${timeout_env[@]}" \
+      -v "${ROOT}:/workspaces/emails-assistant" \
+      -w /workspaces/emails-assistant \
+      "$image" \
+      python3 -m emails_assistant.cli login "$alias" --oauth-port "$port" --no-browser \
+      2> >(open_auth_url)
+  )" || login_failed || return 1
   if [[ -z "$token_json" ]]; then
-    echo "error: login returned no token" >&2
-    return 1
+    login_failed || return 1
   fi
   security_cmd add-generic-password -s "$SERVICE" -a "token/${alias}" -w "$token_json" -U >/dev/null
 }
@@ -352,8 +397,7 @@ usage: $(basename "$0") <command>
 
   inject <container>     refresh due tokens and write access tokens into the container
   one-shot               refresh due tokens and print one access-token JSON per mailbox
-  login <container> <alias>
-                         store the mailbox token from container stdout into Keychain
+  login <alias>          open the system browser, take the loopback redirect, store the mailbox token
 
 Keychain and docker run on the Mac host. Mail runs receive an access token only.
 EOF
