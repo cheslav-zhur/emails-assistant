@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ class DailyMessage:
 
 
 SUMMARY_MISS = "Summary did not run."
+_DAY_FILE = re.compile(r"\d{4}-\d{2}-\d{2}\.txt")
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,9 @@ def _latest_prior(directory: Path, today: Path) -> Path | None:
     candidates = [
         path
         for path in directory.glob("*.txt")
-        if path.is_file() and path.resolve() != today_resolved
+        if path.is_file()
+        and path.resolve() != today_resolved
+        and _DAY_FILE.fullmatch(path.name)
     ]
     if not candidates:
         return None

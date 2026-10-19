@@ -73,6 +73,33 @@ def test_window_starts_at_the_latest_prior_file(tmp_path: Path) -> None:
     assert decision.window_start == newer
 
 
+def test_a_newer_stray_txt_does_not_move_the_window(tmp_path: Path) -> None:
+    prior = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    stray = datetime(2026, 9, 28, 20, 0, tzinfo=timezone.utc)
+    _prior(tmp_path, "2026-09-28.txt", prior)
+    _prior(tmp_path, "notes.txt", stray)
+
+    decision = decide_daily(
+        daily_dir=tmp_path,
+        now=_NOW,
+        mailboxes=_reads(("email1", ()), ("email2", ())),
+    )
+
+    assert decision.window_start == prior
+
+
+def test_only_a_stray_txt_uses_the_24_hour_window(tmp_path: Path) -> None:
+    _prior(tmp_path, "notes.txt", datetime(2026, 9, 28, 20, 0, tzinfo=timezone.utc))
+
+    decision = decide_daily(
+        daily_dir=tmp_path,
+        now=_NOW,
+        mailboxes=_reads(("email1", ()), ("email2", ())),
+    )
+
+    assert decision.window_start == _NOW - timedelta(hours=24)
+
+
 def test_existing_today_file_is_left_and_sends_no_notice(tmp_path: Path) -> None:
     today = tmp_path / "2026-09-29.txt"
     today.write_text("already\n")
