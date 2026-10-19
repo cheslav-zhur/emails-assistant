@@ -145,7 +145,7 @@ sequenceDiagram
 - The login attempt already waiting inside the current Dev Container. That attempt is the old path.
 - Digest text, search, message display, and the morning file format.
 
-**Next change.** One Dockerfile with targets `app` and `login`. Tags `emails-assistant:app` and `emails-assistant:login`. `pyproject.toml` extras use those same names; `google-auth` stays the shared dependency. The login image does not install the Gmail client. Its entrypoint does not import the mail modules. The repo stays mounted; a Python edit is visible without a rebuild. A rebuild follows a `pyproject.toml` change. `requirements.txt` goes away. `docs/dev.md` keeps the current `emails-assistant:daily` instructions until this change updates the code and those instructions together.
+**Next change.** Split the images as in `docs/plans/2026-10-19-split-images-note.md`. `docs/dev.md` keeps the current `emails-assistant:daily` instructions until that change updates the code and those instructions together.
 
 **Deferred to Follow-Up Work**
 
