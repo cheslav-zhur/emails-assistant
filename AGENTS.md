@@ -20,12 +20,12 @@
 | Language | Python 3.12+ |
 | Mail access | Gmail API + OAuth |
 | Scope | `https://www.googleapis.com/auth/gmail.readonly` |
-| Credential store | macOS Keychain (no biometrics; no project token files) |
+| Credential store | Mailbox OAuth in macOS Keychain (no biometrics). Gemini service account: one JSON in gitignored `keys/`, for now |
 | Account aliases | `email1`, `email2` (real addresses only in local `.env` / Keychain) |
 | Deps | pinned in `requirements.txt` / `pyproject.toml` |
 | Runtime | Dev Container for interactive use; LaunchAgent runs `docker run --rm` for the morning file |
 
-**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail as a mail client, `gws`, plaintext project token files, new frameworks, DB. The LaunchAgent banner already uses `osascript` for a notification; do not grow that into a mail path.
+**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail as a mail client, `gws`, more plaintext credential files, new frameworks, DB. The Gemini service account in `keys/` is the current exception. The LaunchAgent banner already uses `osascript` for a notification; do not grow that into a mail path.
 
 ## Sources of truth
 
@@ -52,7 +52,7 @@ docs/solutions/
 ## Security
 
 - Never commit real email addresses, OAuth tokens, `.env`, or real mail bodies/fixtures
-- Credentials: macOS Keychain on the **host** (no biometrics); Linux container gets ephemeral inject only
+- Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is the one JSON in gitignored `keys/`; the morning container reads it from the repo mount. Linux container gets an ephemeral Gmail token inject only
 - Scope: read mail only unless explicitly expanded
 - Do not `pip`/`uv`/`npm` install until the user says **ok** / **go ahead** (opening Dev Container is an explicit go for `postCreate` only — details in `docs/dev.md`)
 - Prefer offline; network for package managers / Google APIs only when needed
