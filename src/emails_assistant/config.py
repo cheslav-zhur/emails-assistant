@@ -11,8 +11,11 @@ GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
 
 def load_dotenv(path: Path | None = None) -> None:
-    """Load the cwd ``.env`` into ``os.environ`` without overriding existing variables."""
-    _load_dotenv(path or Path.cwd() / ".env", override=False)
+    """Load the cwd ``.env`` into ``os.environ`` without overriding existing variables.
+
+    ``$`` stays literal. Values are not expanded from the environment.
+    """
+    _load_dotenv(path or Path.cwd() / ".env", override=False, interpolate=False)
 
 
 def known_aliases() -> tuple[str, ...]:
