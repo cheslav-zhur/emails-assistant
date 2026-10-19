@@ -357,7 +357,8 @@ login_failed() {
 }
 
 cmd_login() {
-  local alias="${1:-}" client port token_json image timeout_env=()
+  local alias="${1:-}" client port token_json image
+  local -a docker_args
   if [[ -z "${EMAILS_ASSISTANT_SECURITY:-}" ]]; then
     need_macos || return 1
   fi
@@ -369,20 +370,24 @@ cmd_login() {
   client="$(security_cmd find-generic-password -s "$SERVICE" -a "oauth-client" -w)" || return 1
   port="$(login_port)" || return 1
   image="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+  docker_args=(
+    run --rm -i -u vscode
+    -p "127.0.0.1:${port}:${port}"
+    -e "PYTHONPATH=/workspaces/emails-assistant/src"
+    -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}"
+  )
   if [[ -n "${EMAILS_ASSISTANT_LOGIN_TIMEOUT:-}" ]]; then
-    timeout_env=(-e "EMAILS_ASSISTANT_LOGIN_TIMEOUT=${EMAILS_ASSISTANT_LOGIN_TIMEOUT}")
+    docker_args+=(-e "EMAILS_ASSISTANT_LOGIN_TIMEOUT=${EMAILS_ASSISTANT_LOGIN_TIMEOUT}")
   fi
+  docker_args+=(
+    -v "${ROOT}:/workspaces/emails-assistant"
+    -w /workspaces/emails-assistant
+    "$image"
+    python3 -m emails_assistant.cli login "$alias" --oauth-port "$port" --no-browser
+  )
   "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
-    printf '%s' "$client" | docker_cmd run --rm -i -u vscode \
-      -p "127.0.0.1:${port}:${port}" \
-      -e "PYTHONPATH=/workspaces/emails-assistant/src" \
-      -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}" \
-      "${timeout_env[@]}" \
-      -v "${ROOT}:/workspaces/emails-assistant" \
-      -w /workspaces/emails-assistant \
-      "$image" \
-      python3 -m emails_assistant.cli login "$alias" --oauth-port "$port" --no-browser \
+    printf '%s' "$client" | docker_cmd "${docker_args[@]}" \
       2> >(open_auth_url)
   )" || login_failed || return 1
   if [[ -z "$token_json" ]]; then
