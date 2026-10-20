@@ -17,6 +17,7 @@ Finished work stays in git. Do not copy it back here from an old plan.
 
 ## Decide later
 
+- **Refactor the host shell scripts.** The bulk is the heredoc and the NUL protocol in `access-token.sh`. A thinner host follows if refresh runs in the login container and the app container stays on access tokens only. `docs/plans/2026-10-20-host-shell-refactor-note.md`.
 - **Publish the Google OAuth client.** A Testing client drops the refresh token about every seven days. Login on the Mac is the recovery. `docs/plans/2026-10-17-feat-mac-login-plan.md`.
 - **Gemini key in `keys/`.** One gitignored service-account JSON, mounted read-only into the morning container. Kept for now instead of a Keychain item `gemini-caller` or a bearer minted on the Mac. `AGENTS.md`, `docs/plans/2026-09-28-003-feat-mail-summary-plan.md`.
 - **Mac checks for launchd, Docker, and the banner.** `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md`.
