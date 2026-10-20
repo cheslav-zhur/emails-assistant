@@ -2,9 +2,9 @@
 # Host daily agent with stubbed clock, one-shot, docker, and osascript.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/scripts/macos-daily.sh"
-PLIST="$ROOT/scripts/com.emails-assistant.daily.plist"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT/src/host/macos-daily.sh"
+PLIST="$ROOT/src/host/com.emails-assistant.daily.plist"
 BIN="$(mktemp -d)"
 IO_DIR=""
 DAY_DIR=""
@@ -182,14 +182,14 @@ run_agent
 [[ ! -s "$IO_DIR/banners" ]] || fail "second banner"
 [[ ! -s "$IO_DIR/shots" ]] || fail "second one-shot"
 
-# Image already matches requirements.txt: do not build again.
+# Image already matches pyproject.toml: do not build again.
 reset_io "2026-09-29 10:30:00"
 arm_success
 : >"$IO_DIR/image_ready"
 if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "$ROOT/requirements.txt" | awk '{print $1}' >"$IO_DIR/stamp"
+  shasum -a 256 "$ROOT/pyproject.toml" | awk '{print $1}' >"$IO_DIR/stamp"
 else
-  sha256sum "$ROOT/requirements.txt" | awk '{print $1}' >"$IO_DIR/stamp"
+  sha256sum "$ROOT/pyproject.toml" | awk '{print $1}' >"$IO_DIR/stamp"
 fi
 run_agent
 [[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 0 ]] || fail "rebuilt a current image"
@@ -267,6 +267,18 @@ EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
 EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
 "$SCRIPT"
 [[ "$(cat "$IO_DIR/docker_args")" == *"EMAILS_ASSISTANT_DAILY_DIR=/workspaces/emails-assistant/digests"* ]] || fail "container day dir: $(cat "$IO_DIR/docker_args")"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/src/emails_assistant:/workspaces/emails-assistant/src/emails_assistant:ro"* ]] || fail "mail package was not mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/src/shared.py:/workspaces/emails-assistant/src/shared.py:ro"* ]] || fail "shared.py was not mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/digests:/workspaces/emails-assistant/digests"* ]] || fail "digests/ was not mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/digests:/workspaces/emails-assistant/digests:ro"* ]] || fail "digests/ was mounted read-only"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT:/workspaces/emails-assistant "* ]] || fail "the whole repo was mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/.env"* ]] || fail ".env was mounted"
+[[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/src/login:"* ]] || fail "login package was mounted"
+if [[ -d "$ROOT/keys" ]]; then
+  [[ "$(cat "$IO_DIR/docker_args")" == *"$ROOT/keys:/workspaces/emails-assistant/keys:ro"* ]] || fail "keys/ was not mounted read-only"
+else
+  [[ "$(cat "$IO_DIR/docker_args")" != *"$ROOT/keys:"* ]] || fail "missing keys/ was mounted"
+fi
 [[ "$(cat "$IO_DIR/docker_args")" != *"Application Support"* ]] || fail "day file still uses Application Support"
 [[ "$(cat "$IO_DIR/docker_args")" != *":/daily"* ]] || fail "default run still mounts /daily"
 [[ "$(cat "$ROOT/digests/2026-09-29.txt")" == "from-container" ]] || fail "default run did not write digests/"

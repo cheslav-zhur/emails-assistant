@@ -2,7 +2,7 @@
 # Mac host: refresh Gmail access tokens from Keychain and hand off access tokens only.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICE="${EMAILS_ASSISTANT_KEYCHAIN_SERVICE:-emails-assistant}"
 LEGACY_DIR="$ROOT/.creds"
 
@@ -369,7 +369,7 @@ cmd_login() {
   clear_legacy_creds || return 1
   client="$(security_cmd find-generic-password -s "$SERVICE" -a "oauth-client" -w)" || return 1
   port="$(login_port)" || return 1
-  image="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+  image="${EMAILS_ASSISTANT_LOGIN_IMAGE:-emails-assistant:login}"
   docker_args=(
     run --rm -i -u vscode
     -p "127.0.0.1:${port}:${port}"
@@ -380,12 +380,15 @@ cmd_login() {
     docker_args+=(-e "EMAILS_ASSISTANT_LOGIN_TIMEOUT=${EMAILS_ASSISTANT_LOGIN_TIMEOUT}")
   fi
   docker_args+=(
-    -v "${ROOT}:/workspaces/emails-assistant"
+    -v "$ROOT/src/login:/workspaces/emails-assistant/src/login:ro"
+    -v "$ROOT/src/shared.py:/workspaces/emails-assistant/src/shared.py:ro"
     -w /workspaces/emails-assistant
     "$image"
-    python3 -m emails_assistant.cli login "$alias" --oauth-port "$port" --no-browser
+    python3 -m login "$alias" --oauth-port "$port" --no-browser
   )
-  "$ROOT/scripts/macos-daily.sh" build-image || login_failed || return 1
+  EMAILS_ASSISTANT_IMAGE="$image" \
+    EMAILS_ASSISTANT_IMAGE_TARGET=login \
+    "$ROOT/src/host/macos-daily.sh" build-image || login_failed || return 1
   token_json="$(
     printf '%s' "$client" | docker_cmd "${docker_args[@]}" \
       2> >(open_auth_url)

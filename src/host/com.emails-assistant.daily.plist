@@ -6,7 +6,7 @@
   <string>com.emails-assistant.daily</string>
   <key>ProgramArguments</key>
   <array>
-    <string>REPLACE_WITH_REPO/scripts/macos-daily.sh</string>
+    <string>REPLACE_WITH_REPO/src/host/macos-daily.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>

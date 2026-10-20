@@ -1,4 +1,4 @@
-"""CLI: login, smoke, digest, daily, search, show."""
+"""CLI: smoke, digest, daily, search, show."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from emails_assistant.auth import (
     ACCESS_RERUN_NOTICE,
     CredentialError,
     load_access_credentials,
-    login,
 )
+from shared import known_aliases, resolve_alias
 from emails_assistant.digest import format_digest, format_search, format_show
 from emails_assistant.gmail_api import (
     get_message,
@@ -49,7 +49,7 @@ _QUIET_LOGGERS = (
 
 
 def access_token_path(alias: str) -> Path:
-    config.resolve_alias(alias)
+    resolve_alias(alias)
     return ACCESS_TOKEN_DIR / f"access-{alias}.json"
 
 
@@ -108,9 +108,9 @@ def _daily_fail() -> None:
 
 def _run_daily() -> None:
     """Read both mailboxes, then write today's file and print only the count."""
-    aliases = config.known_aliases()
+    aliases = known_aliases()
     for alias in aliases:
-        config.resolve_alias(alias)
+        resolve_alias(alias)
     lines = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
     if len(lines) != len(aliases):
         _daily_fail()
@@ -220,23 +220,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    login_p = sub.add_parser(
-        "login",
-        help="Browser OAuth; mailbox token JSON on stdout",
-    )
-    login_p.add_argument("alias", help="Account alias (email1 or email2)")
-    login_p.add_argument(
-        "--oauth-port",
-        type=int,
-        default=0,
-        help="Fixed localhost port for OAuth callback (0 = ephemeral)",
-    )
-    login_p.add_argument(
-        "--no-browser",
-        action="store_true",
-        help="Do not open a browser; print the URL on stderr",
-    )
-
     smoke_p = sub.add_parser(
         "smoke",
         help="List one message via Gmail API",
@@ -293,15 +276,7 @@ def main(argv: list[str] | None = None) -> None:
     _configure_logging(args.verbose)
 
     try:
-        if args.command == "login":
-            creds = login(
-                args.alias,
-                client_json=sys.stdin.read(),
-                oauth_port=args.oauth_port,
-                open_browser=not args.no_browser,
-            )
-            sys.stdout.write(creds.to_json())
-        elif args.command == "smoke":
+        if args.command == "smoke":
             creds = _mail_credentials(args.alias)
             info = smoke_list_one(creds)
             if not info["id"]:
@@ -316,9 +291,9 @@ def main(argv: list[str] | None = None) -> None:
             hours = args.hours if args.hours is not None else config.since_hours()
             if hours < 1:
                 raise SystemExit("--hours must be >= 1")
-            aliases = tuple(args.aliases) if args.aliases else config.known_aliases()
+            aliases = tuple(args.aliases) if args.aliases else known_aliases()
             for alias in aliases:
-                config.resolve_alias(alias)
+                resolve_alias(alias)
 
             sections: list = []
             for alias in aliases:

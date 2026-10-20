@@ -1,6 +1,6 @@
 # Split the app and login images
 
-Draft. Behavior of login and the morning file stays as it is. This note is only how the images are built.
+Agreed. Behavior of login and the morning file stays as it is. This note is how the images are built.
 
 ## Images
 
@@ -9,22 +9,22 @@ One `Dockerfile`, two targets, same base `mcr.microsoft.com/devcontainers/python
 | Target | Tag | Who starts it |
 |---|---|---|
 | `app` | `emails-assistant:app` | Dev Container and the 08:00 run |
-| `login` | `emails-assistant:login` | `scripts/macos-access-token.sh login` |
+| `login` | `emails-assistant:login` | `src/host/macos-access-token.sh login` |
 
 GitHub CLI and Node stay in `.devcontainer/devcontainer.json`, on the `app` target only. The morning run does not get them.
 
-The old tag `emails-assistant:daily` goes away. `scripts/macos-daily.sh` and the login command use the new tags. The LaunchAgent plist does not name an image.
+The old tag `emails-assistant:daily` goes away. `src/host/macos-daily.sh` builds `emails-assistant:app`. The login command builds `emails-assistant:login` and does not build the app image. The LaunchAgent plist does not name an image.
 
 ## Dependencies
 
-Pins live once in `pyproject.toml`. `requirements.txt` is removed.
+Pins live once in `pyproject.toml`. `requirements.txt` is removed. This note names the package, not the version.
 
-- In `dependencies`, both images: `google-auth==2.40.3`
-- Extra `app`: `google-api-python-client==2.201.0`, `google-auth-httplib2==0.4.4`, `python-dotenv==1.2.4`
-- Extra `login`: `google-auth-oauthlib==1.5.0`
-- Extra `dev`: `pytest==9.1.1`, unchanged
+- In `dependencies`, both images: `google-auth`
+- Extra `app`: `google-api-python-client`, `google-auth-httplib2`, `python-dotenv`, `google-genai`
+- Extra `login`: `google-auth-oauthlib`
+- Extra `dev`: `pytest`
 
-The `app` image installs `.[app]`. The `login` image installs `.[login]` and does not install the Gmail client or `python-dotenv`. `python-dotenv` is already pinned. CI installs `.[app,login,dev]`.
+The `app` image installs `.[app]`. The `login` image installs `.[login]` and does not install the Gmail client, `python-dotenv`, or `google-genai`. CI installs `.[app,login,dev]`.
 
 The host starts `python -m login` inside `emails-assistant:login`. That process imports `shared` and does not import `emails_assistant`. The mail process does not import `login`.
 
@@ -32,15 +32,14 @@ The host starts `python -m login` inside `emails-assistant:login`. That process 
 
 ```
 src/shared.py
-src/shared.test.py
 src/emails_assistant/
 src/login/
 src/host/
 ```
 
-`src/emails_assistant/` stays the mail package. The terminal command stays `emails-assistant` and points at `emails_assistant.cli:main`. The image target is still `app`; the package is not renamed. `src/login/` is the consent package. `src/shared.py` is one module, not a `shared/` directory. `src/host/` holds the Mac scripts. There is no `tests/` directory.
+`src/emails_assistant/` stays the mail package. The terminal command stays `emails-assistant` and points at `emails_assistant.cli:main`. The image target is still `app`; the package is not renamed. `src/login/` is the consent package. `src/shared.py` is one module, not a `shared/` directory. `src/host/` holds the Mac scripts that are in `scripts/` today. There is no `tests/` directory.
 
-A check sits next to the file it covers: `digest.py` and `digest.test.py`, `macos-daily.sh` and `macos-daily.test.sh`. `pyproject.toml` teaches pytest the `*.test.py` pattern. Shell checks stay shell.
+A check sits next to the file it covers: `digest.py` and `test_digest.py`, `macos-daily.sh` and `macos-daily.test.sh`. `digest.test.py` is not a module name pytest can import beside `digest.py`. Shell checks stay shell.
 
 ## shared.py
 
@@ -54,20 +53,20 @@ It keeps:
 
 It does not keep:
 
-- `load_dotenv()` — moves into `src/emails_assistant/`. The dev process reads `.env` through `python-dotenv`. One-shot containers do not mount `.env`; the host passes `EMAILS_ASSISTANT_ACCOUNTS` in the environment.
+- `load_dotenv()` — moves into `src/emails_assistant/`. The dev process reads `.env` through `python-dotenv`, and `$` stays literal. One-shot containers do not mount `.env`; the host passes `EMAILS_ASSISTANT_ACCOUNTS` in the environment.
 - `since_hours()` — moves into `src/emails_assistant/`. Only `digest` uses it.
 
-Access-token parsing stays in `emails_assistant`. Consent stays in `login`.
+Access-token parsing stays in `emails_assistant`. Consent stays in `login`. The Gemini scope stays in `emails_assistant` with the summary.
 
 ## Mounts
 
-The morning container mounts `src/emails_assistant/` and `src/shared.py`. The login container mounts `src/login/` and `src/shared.py`. A `*.test.py` file inside a mounted package comes along and is not run. `src/host/`, `.env`, and the other package are not mounted.
+The morning container mounts `src/emails_assistant/`, `src/shared.py`, `keys/` read-only, and `digests/` writable. `keys/` is the service-account JSON the summary already reads. `digests/` is the day file and the summary-miss marker. The login container mounts `src/login/` and `src/shared.py`. A `test_*.py` file inside a mounted package comes along and is not run. Login does not mount `src/host/`, `.env`, `keys/`, `digests/`, or the mail package. The morning container does not mount `src/host/`, `.env`, or `src/login/`.
 
 The Dev Container still opens the whole repo. It is the editor.
 
-A Python edit in a mounted file shows up without a rebuild. Rebuild when `pyproject.toml` changes. The image stamp in `scripts/macos-daily.sh` follows that file instead of `requirements.txt`.
+A Python edit in a mounted file shows up without a rebuild. Rebuild when `pyproject.toml` changes. Each tag keeps its own stamp, and both stamps hash that file. Those stamps follow `pyproject.toml` instead of `requirements.txt`.
 
-`docs/dev.md` changes in the same edit as the tags. Until then it still says `emails-assistant:daily`.
+`docs/dev.md` and `AGENTS.md` name `emails-assistant:app`, `emails-assistant:login`, and `src/host/`.
 
 ## Not this change
 

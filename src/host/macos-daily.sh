@@ -2,10 +2,11 @@
 # Mac host: one daily digest after 08:00 local time. Tokens stay in memory.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FAILURE="Daily digest did not run."
 SUMMARY_MISS="Summary did not run."
-IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:daily}"
+IMAGE="${EMAILS_ASSISTANT_IMAGE:-emails-assistant:app}"
+TARGET="${EMAILS_ASSISTANT_IMAGE_TARGET:-app}"
 CONTAINER_ROOT="/workspaces/emails-assistant"
 CONTAINER_DAILY="/daily"
 
@@ -53,27 +54,27 @@ image_stamp() {
     printf '%s' "$EMAILS_ASSISTANT_IMAGE_STAMP"
     return
   fi
-  printf '%s' "$HOME/Library/Application Support/emails-assistant/daily-image.sha256"
+  printf '%s' "$HOME/Library/Application Support/emails-assistant/${TARGET}-image.sha256"
 }
 
-requirements_hash() {
+pyproject_hash() {
   if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$ROOT/requirements.txt" | awk '{print $1}'
+    shasum -a 256 "$ROOT/pyproject.toml" | awk '{print $1}'
     return
   fi
-  sha256sum "$ROOT/requirements.txt" | awk '{print $1}'
+  sha256sum "$ROOT/pyproject.toml" | awk '{print $1}'
 }
 
 ensure_image() {
   local stamp hash
   stamp="$(image_stamp)"
-  hash="$(requirements_hash)"
+  hash="$(pyproject_hash)"
   if docker_cmd image inspect "$IMAGE" >/dev/null 2>&1 \
     && [[ -f "$stamp" ]] \
     && [[ "$(cat "$stamp")" == "$hash" ]]; then
     return 0
   fi
-  docker_cmd build -t "$IMAGE" -f "$ROOT/Dockerfile" "$ROOT"
+  docker_cmd build --target "$TARGET" -t "$IMAGE" -f "$ROOT/Dockerfile" "$ROOT"
   mkdir -p "$(dirname "$stamp")"
   printf '%s\n' "$hash" >"$stamp"
 }
@@ -91,7 +92,7 @@ one_shot() {
     "$EMAILS_ASSISTANT_ONE_SHOT"
     return
   fi
-  "$ROOT/scripts/macos-access-token.sh" one-shot
+  "$ROOT/src/host/macos-access-token.sh" one-shot
 }
 
 host_tz() {
@@ -146,11 +147,15 @@ run_container() {
     -e "EMAILS_ASSISTANT_DAILY_DIR=$container_daily"
     -e "EMAILS_ASSISTANT_ACCOUNTS=${EMAILS_ASSISTANT_ACCOUNTS:-email1,email2}"
   )
-  if [[ "$host_daily" != "$ROOT/"* ]]; then
-    args+=(-v "$host_daily:$CONTAINER_DAILY")
+  args+=(
+    -v "$ROOT/src/emails_assistant:$CONTAINER_ROOT/src/emails_assistant:ro"
+    -v "$ROOT/src/shared.py:$CONTAINER_ROOT/src/shared.py:ro"
+    -v "$host_daily:$container_daily"
+  )
+  if [[ -d "$ROOT/keys" ]]; then
+    args+=(-v "$ROOT/keys:$CONTAINER_ROOT/keys:ro")
   fi
   args+=(
-    -v "$ROOT:$CONTAINER_ROOT"
     -v /etc/localtime:/etc/localtime:ro
     -w "$CONTAINER_ROOT"
     "$IMAGE"

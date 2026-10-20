@@ -2,8 +2,8 @@
 # Installs the daily LaunchAgent into a temp home. launchctl is a stub.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/scripts/macos-install-daily-agent.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT/src/host/macos-install-daily-agent.sh"
 BIN="$(mktemp -d)"
 IO_DIR="$(mktemp -d)"
 HOME_DIR="$(mktemp -d)"
@@ -45,8 +45,8 @@ EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
 installed="$HOME_DIR/Library/LaunchAgents/com.emails-assistant.daily.plist"
 [[ -f "$installed" ]] || fail "plist was not installed"
 [[ "$(cat "$installed")" != *REPLACE_WITH_REPO* ]] || fail "placeholder left in the installed plist"
-[[ "$(cat "$installed")" == *"$ROOT/scripts/macos-daily.sh"* ]] || fail "script path was not substituted"
-[[ "$(cat "$ROOT/scripts/com.emails-assistant.daily.plist")" == *REPLACE_WITH_REPO* ]] || fail "repo plist was rewritten"
+[[ "$(cat "$installed")" == *"$ROOT/src/host/macos-daily.sh"* ]] || fail "script path was not substituted"
+[[ "$(cat "$ROOT/src/host/com.emails-assistant.daily.plist")" == *REPLACE_WITH_REPO* ]] || fail "repo plist was rewritten"
 
 domain="gui/$(id -u)"
 [[ "$(sed -n '1p' "$IO_DIR/calls")" == "bootout ${domain} ${installed}" ]] || fail "bootout: $(sed -n '1p' "$IO_DIR/calls")"

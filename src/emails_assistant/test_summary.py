@@ -161,7 +161,7 @@ def test_a_bad_key_file_is_a_miss_without_the_key(tmp_path: Path, caplog: pytest
 
 
 def test_importing_the_cli_does_not_load_genai() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root / "src")
     completed = subprocess.run(

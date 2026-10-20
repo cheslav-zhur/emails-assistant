@@ -2,8 +2,8 @@
 # Runs the host script as its own process. Stubs are executables, not shell functions.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/scripts/macos-access-token.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT/src/host/macos-access-token.sh"
 BIN="$(mktemp -d)"
 
 REFRESH_SENTINEL='1//fixture+refresh='
@@ -176,7 +176,7 @@ sec_get() {
 if grep -n '\.creds/' "$SCRIPT" >/dev/null; then
   fail "script contains a .creds/ path"
 fi
-[[ ! -f "$ROOT/scripts/macos-keychain-bridge.sh" ]] || fail "old bridge script still exists"
+[[ ! -f "$ROOT/src/host/macos-keychain-bridge.sh" ]] || fail "old bridge script still exists"
 
 reset_io
 install_mailbox email1 ya29-still-good "2026-09-28T12:10:00Z"
@@ -355,6 +355,13 @@ run_args="$(cat "$IO_DIR/docker_args.$run_n")"
 [[ "$run_args" == *" -p 127.0.0.1:"* ]] || fail "consent port was not published on loopback"
 [[ "$run_args" != *" exec "* ]] || fail "login attached to a dev container"
 [[ "$run_args" == *" login email1 "* ]] || fail "container did not run login for email1"
+[[ "$run_args" == *"$ROOT/src/login:/workspaces/emails-assistant/src/login:ro"* ]] || fail "login package was not mounted read-only"
+[[ "$run_args" == *"$ROOT/src/shared.py:/workspaces/emails-assistant/src/shared.py:ro"* ]] || fail "shared.py was not mounted read-only"
+[[ "$run_args" != *"$ROOT:/workspaces/emails-assistant "* ]] || fail "login mounted the whole repo"
+[[ "$run_args" != *"$ROOT/.env"* ]] || fail "login mounted .env"
+[[ "$run_args" != *"$ROOT/src/emails_assistant:"* ]] || fail "login mounted the mail package"
+[[ "$run_args" != *"$ROOT/keys:"* ]] || fail "login mounted keys/"
+[[ "$run_args" != *"$ROOT/digests:"* ]] || fail "login mounted digests/"
 [[ "$run_args" == *" --oauth-port "* ]] || fail "container was not told the published port"
 [[ "$run_args" != *"EMAILS_ASSISTANT_LOGIN_TIMEOUT"* ]] || fail "unset login timeout was forwarded"
 [[ "$run_args" != *"$SECRET_SENTINEL"* ]] || fail "client secret was a docker argument"
@@ -419,7 +426,7 @@ set -e
 unset EMAILS_ASSISTANT_OPEN EMAILS_ASSISTANT_IMAGE_STAMP
 
 if grep -R -n -e "$REFRESH_SENTINEL" -e "$SECRET_SENTINEL" \
-  --exclude-dir=.git --exclude=test_host_refresh.sh "$ROOT" >/dev/null
+  --exclude-dir=.git --exclude=macos-access-token.test.sh "$ROOT" >/dev/null
 then
   fail "a secret file was left in the repo"
 fi
