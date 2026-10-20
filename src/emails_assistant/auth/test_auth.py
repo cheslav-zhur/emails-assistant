@@ -206,6 +206,17 @@ def _live_access_names() -> set[str]:
     return {path.name for path in _SHM_DIR.glob("access-*.json")}
 
 
+def _project_files() -> set[Path]:
+    root = Path.cwd()
+    return {
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and ".venv" not in path.relative_to(root).parts
+        and "__pycache__" not in path.parts
+    }
+
+
 class MailCommandAccessTokenTest(unittest.TestCase):
     def setUp(self) -> None:
         self._env = patch.dict(
@@ -371,7 +382,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
             }
         )
         auth_url = "https://accounts.google.com/o/oauth2/auth?test=1"
-        before = {path for path in Path.cwd().rglob("*") if path.is_file()}
+        before = _project_files()
         with patch(
             "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config"
         ) as factory:
@@ -399,7 +410,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertEqual(json.loads(out), json.loads(creds.to_json()))
         self.assertIn(auth_url, err)
         self.assertNotIn(_CLIENT_SECRET, err)
-        after = {path for path in Path.cwd().rglob("*") if path.is_file()}
+        after = _project_files()
         self.assertEqual(before, after)
 
     def test_access_file_is_created_mode_0600_before_write(self) -> None:
