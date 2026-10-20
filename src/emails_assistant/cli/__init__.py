@@ -56,8 +56,30 @@ def access_token_path(alias: str) -> Path:
     return ACCESS_TOKEN_DIR / f"access-{alias}.json"
 
 
+def _workspace_root() -> Path | None:
+    start = Path(__file__).resolve().parent
+    for parent in (start, *start.parents):
+        if (parent / "pyproject.toml").is_file() and (
+            parent / "src" / "emails_assistant"
+        ).is_dir():
+            return parent
+    return None
+
+
 def _under_workspace(path: Path) -> bool:
-    return path.resolve().is_relative_to(Path.cwd().resolve())
+    """True when the resolved path sits in the checkout or the process cwd.
+
+    ``docker exec`` starts at ``/``. That root is not a workspace: every
+    absolute path is relative to it, including the tmpfs access file.
+    """
+    resolved = path.resolve()
+    root = _workspace_root()
+    if root is not None and resolved.is_relative_to(root):
+        return True
+    cwd = Path.cwd().resolve()
+    if cwd == Path("/"):
+        return False
+    return resolved.is_relative_to(cwd)
 
 
 def load_access_token_file(path: Path) -> Credentials:

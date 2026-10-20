@@ -164,6 +164,26 @@ class _Service:
         return self._messages
 
 
+def _live_access_names() -> set[str]:
+    if not _SHM_DIR.is_dir():
+        return set()
+    return {path.name for path in _SHM_DIR.glob("access-*.json")}
+
+
+@pytest.fixture(autouse=True)
+def access_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    directory = tmp_path / "access"
+    directory.mkdir()
+    monkeypatch.setattr("emails_assistant.cli.ACCESS_TOKEN_DIR", directory)
+    before = _live_access_names()
+    try:
+        yield directory
+        assert _live_access_names() == before
+    finally:
+        for name in _live_access_names() - before:
+            (_SHM_DIR / name).unlink(missing_ok=True)
+
+
 @pytest.fixture
 def daily_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("EMAILS_ASSISTANT_ACCOUNTS", "email1,email2")
@@ -179,13 +199,7 @@ def daily_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     monkeypatch.setattr(
         "emails_assistant.summary.gemini_key_path", lambda **_kwargs: key
     )
-    if _SHM_DIR.exists():
-        for path in _SHM_DIR.glob("access-*.json"):
-            path.unlink()
     yield day
-    if _SHM_DIR.exists():
-        for path in _SHM_DIR.glob("access-*.json"):
-            path.unlink()
 
 
 def _install_mailboxes(*boxes: _Messages) -> tuple[list[_Messages], Any]:
@@ -237,7 +251,9 @@ class _Client:
         self.models = _Models(responses)
 
 
-def test_two_mailboxes_become_one_summary_and_a_count(daily_dir: Path) -> None:
+def test_two_mailboxes_become_one_summary_and_a_count(
+    daily_dir: Path, access_dir: Path
+) -> None:
     first = _Messages(["a", "b"])
     second = _Messages(["c", "d", "e"])
     _boxes, patched = _install_mailboxes(first, second)
@@ -267,7 +283,7 @@ def test_two_mailboxes_become_one_summary_and_a_count(daily_dir: Path) -> None:
     assert _TOKEN not in out
     assert _KEY_SECRET not in out
     assert client.models.calls[0]["model"] == _MODEL
-    access = (_SHM_DIR / "access-email1.json").read_text(encoding="utf-8")
+    access = (access_dir / "access-email1.json").read_text(encoding="utf-8")
     assert _KEY_SECRET not in access
 
 
@@ -409,7 +425,9 @@ def test_second_alias_failure_writes_no_file_and_hides_the_subject(
     assert not (daily_dir / "2026-09-29.txt").exists()
 
 
-def test_refresh_token_on_stdin_writes_no_file(daily_dir: Path) -> None:
+def test_refresh_token_on_stdin_writes_no_file(
+    daily_dir: Path, access_dir: Path
+) -> None:
     code, out, err = _run(
         ["daily"],
         stdin=_line(_payload(_TOKEN, refresh_token=_REFRESH, subject=_SUBJECT)),
@@ -417,10 +435,10 @@ def test_refresh_token_on_stdin_writes_no_file(daily_dir: Path) -> None:
 
     _assert_failed(code, out, err, _REFRESH, _TOKEN, _SUBJECT)
     assert not (daily_dir / "2026-09-29.txt").exists()
-    assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True
+    assert not list(access_dir.glob("access-*.json"))
 
 
-def test_payload_count_must_match_aliases(daily_dir: Path) -> None:
+def test_payload_count_must_match_aliases(daily_dir: Path, access_dir: Path) -> None:
     code, out, err = _run(
         ["daily"],
         stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2), _payload("ya29-extra")),
@@ -428,7 +446,7 @@ def test_payload_count_must_match_aliases(daily_dir: Path) -> None:
 
     _assert_failed(code, out, err, _TOKEN, _TOKEN_2, "ya29-extra")
     assert not (daily_dir / "2026-09-29.txt").exists()
-    assert not list(_SHM_DIR.glob("access-*.json")) if _SHM_DIR.exists() else True
+    assert not list(access_dir.glob("access-*.json"))
 
 
 def test_one_mailbox_name_is_enough(daily_dir: Path) -> None:

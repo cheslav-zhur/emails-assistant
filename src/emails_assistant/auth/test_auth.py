@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import tempfile
 import unittest
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -199,6 +200,12 @@ def _write_access_file(alias: str, payload: dict[str, object]) -> Path:
     return write_access_token_file(alias, json.dumps(payload))
 
 
+def _live_access_names() -> set[str]:
+    if not _SHM_DIR.is_dir():
+        return set()
+    return {path.name for path in _SHM_DIR.glob("access-*.json")}
+
+
 class MailCommandAccessTokenTest(unittest.TestCase):
     def setUp(self) -> None:
         self._env = patch.dict(
@@ -207,19 +214,21 @@ class MailCommandAccessTokenTest(unittest.TestCase):
             clear=False,
         )
         self._env.start()
-        if _SHM_DIR.exists():
-            for path in _SHM_DIR.glob("access-*.json"):
-                path.unlink()
-            for path in _SHM_DIR.glob("token-*.json"):
-                path.unlink()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.access_dir = Path(self._tmp.name)
+        self._dir = patch("emails_assistant.cli.ACCESS_TOKEN_DIR", self.access_dir)
+        self._dir.start()
+        self._live_before = _live_access_names()
 
     def tearDown(self) -> None:
-        self._env.stop()
-        if _SHM_DIR.exists():
-            for path in _SHM_DIR.glob("access-*.json"):
-                path.unlink()
-            for path in _SHM_DIR.glob("token-*.json"):
-                path.unlink()
+        try:
+            self.assertEqual(_live_access_names(), self._live_before)
+        finally:
+            for name in _live_access_names() - self._live_before:
+                (_SHM_DIR / name).unlink(missing_ok=True)
+            self._dir.stop()
+            self._tmp.cleanup()
+            self._env.stop()
 
     def test_digest_reads_two_access_files_and_skips_token_endpoint(self) -> None:
         _write_access_file("email1", _safe_payload())
@@ -296,11 +305,11 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertNotIn("ya29-leaked-body", combined)
         self.assertNotIn("Authorization", combined)
         self.assertNotIn(_TOKEN, combined)
+        self.assertNotIn(str(self.access_dir / "access-email1.json"), combined)
         self.assertNotIn(str(_SHM_DIR / "access-email1.json"), combined)
 
     def test_full_token_file_is_not_an_access_file(self) -> None:
-        _SHM_DIR.mkdir(parents=True, exist_ok=True)
-        legacy = _SHM_DIR / "token-email1.json"
+        legacy = self.access_dir / "token-email1.json"
         legacy.write_text(
             json.dumps(
                 {
@@ -319,6 +328,13 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertNotIn(_REFRESH, combined)
         self.assertNotIn(_CLIENT_SECRET, combined)
         gmail.assert_not_called()
+
+    def test_tmpfs_path_is_allowed_when_cwd_is_root(self) -> None:
+        from emails_assistant import cli
+
+        with patch.object(cli.Path, "cwd", return_value=Path("/")):
+            self.assertFalse(cli._under_workspace(_SHM_DIR / "access-email1.json"))
+            self.assertTrue(cli._under_workspace(Path(__file__).resolve()))
 
     def test_workspace_path_rejected(self) -> None:
         from emails_assistant.cli import load_access_token_file
@@ -399,7 +415,7 @@ class MailCommandAccessTokenTest(unittest.TestCase):
 
         with patch("emails_assistant.cli.os.write", side_effect=spy_write):
             path = write_access_token_file("email1", raw)
-        self.assertEqual(path, _SHM_DIR / "access-email1.json")
+        self.assertEqual(path, self.access_dir / "access-email1.json")
         self.assertEqual(modes, [0o600])
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(

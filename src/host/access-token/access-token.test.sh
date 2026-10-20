@@ -73,24 +73,6 @@ fi
 if [[ "${1:-}" == "run" && -f "$dir/docker_stdout" ]]; then
   cat "$dir/docker_stdout"
 fi
-args=("$@")
-code=""
-rest=()
-for i in "${!args[@]}"; do
-  if [[ "${args[$i]}" == "python3" && "${args[$((i + 1))]:-}" == "-c" ]]; then
-    code="${args[$((i + 2))]}"
-    rest=("${args[@]:$((i + 3))}")
-    break
-  fi
-done
-if [[ -n "$code" ]]; then
-  src="${EMAILS_ASSISTANT_SRC:?}"
-  if ((${#rest[@]})); then
-    PYTHONPATH="$src" python3 -c "$code" "${rest[@]}" <"$dir/docker_stdin.$n"
-  else
-    PYTHONPATH="$src" python3 -c "$code" <"$dir/docker_stdin.$n"
-  fi
-fi
 if [[ "${1:-}" == "run" && -f "$dir/docker_status" ]]; then
   exit "$(cat "$dir/docker_status")"
 fi
@@ -115,6 +97,13 @@ reset_io() {
   rm -f "$IO_DIR/docker_stdout" "$IO_DIR/docker_stderr"
   export EMAILS_ASSISTANT_ACCOUNTS="${1:-email1,email2}"
 }
+
+finish() {
+  if declare -F cleanup_legacy >/dev/null; then
+    cleanup_legacy
+  fi
+}
+trap finish EXIT
 
 queue_curl() {
   local n
@@ -148,7 +137,6 @@ run() {
   EMAILS_ASSISTANT_NOW="$NOW" \
   EMAILS_ASSISTANT_ACCOUNTS="$EMAILS_ASSISTANT_ACCOUNTS" \
   EMAILS_ASSISTANT_KEYCHAIN_SERVICE=emails-assistant \
-  EMAILS_ASSISTANT_SRC="$ROOT/src" \
   "$SCRIPT" "$@"
 }
 
@@ -258,16 +246,34 @@ unset TZ
 stored="$(sec_get token/email1)"
 [[ "$stored" == *'2026-09-28T13:00:00Z'* && "$stored" != *'+07'* ]] || fail "stored expiry was not UTC Z"
 
+snapshot_live() {
+  local out="$1" nullglob_was=0
+  local -a paths=()
+  : >"$out"
+  [[ -d "$live_dir" ]] || return 0
+  shopt -q nullglob && nullglob_was=1
+  shopt -s nullglob
+  paths=("$live_dir"/access-*.json)
+  if [[ "$nullglob_was" -eq 0 ]]; then
+    shopt -u nullglob
+  fi
+  if ((${#paths[@]})); then
+    sha256sum "${paths[@]}" | sort >"$out"
+  fi
+}
+
 reset_io email1
 install_mailbox email1 ya29-inject-access "2026-09-28T12:10:00Z"
-container_copy="/dev/shm/emails-assistant/access-email1.json"
-mkdir -p "$(dirname "$container_copy")"
-printf '%s' 'dev-container-token-original' >"$container_copy"
+live_dir="/dev/shm/emails-assistant"
+before="$(mktemp)"
+after="$(mktemp)"
+snapshot_live "$before"
 stdout="$(run one-shot)"
-[[ "$(cat "$container_copy")" == "dev-container-token-original" ]] || fail "one-shot wrote the dev container token"
+snapshot_live "$after"
+cmp -s "$before" "$after" || fail "one-shot wrote the dev container token"
+rm -f "$before" "$after"
 [[ "$(cat "$IO_DIR/docker_n")" -eq 0 ]] || fail "one-shot touched docker"
 assert_access_only "$stdout"
-rm -f "$container_copy"
 
 set +e
 run inject "box-name" "$SECRET_SENTINEL" >/dev/null 2>&1
@@ -278,7 +284,9 @@ set -e
 
 reset_io email1
 install_mailbox email1 ya29-inject-access "2026-09-28T12:10:00Z"
-run inject "box-name" >/dev/null
+run inject "box-name" >/dev/null 2>"$IO_DIR/err"
+[[ "$(cat "$IO_DIR/err")" == "Injected access tokens for email1." ]] || fail "inject success notice"
+[[ "$(cat "$IO_DIR/err")" != *'ya29-inject-access'* ]] || fail "inject success notice leaked the token"
 [[ "$(cat "$IO_DIR/docker_n")" -eq 1 ]] || fail "inject did not exec"
 args="$(cat "$IO_DIR/docker_args.0")"
 [[ "$args" == *"exec -i -u vscode box-name"* ]] || fail "inject args"
@@ -287,12 +295,6 @@ args="$(cat "$IO_DIR/docker_args.0")"
 stdin="$(cat "$IO_DIR/docker_stdin.0")"
 assert_access_only "$stdin"
 [[ "$stdin" == *'ya29-inject-access'* ]] || fail "inject stdin missing token"
-access_file="/dev/shm/emails-assistant/access-email1.json"
-[[ -f "$access_file" ]] || fail "inject did not write the access file"
-mode="$(stat -c '%a' "$access_file")"
-[[ "$mode" == "600" ]] || fail "inject access file mode is $mode"
-grep -q 'ya29-inject-access' "$access_file" || fail "inject file missing token"
-rm -f "$access_file"
 
 legacy="$ROOT/.creds"
 if [[ -e "$legacy" ]]; then
@@ -303,7 +305,7 @@ cleanup_legacy() {
   rm -rf "$ROOT/.creds/token-email2.json"
   rmdir "$ROOT/.creds" 2>/dev/null || true
 }
-trap cleanup_legacy EXIT
+trap finish EXIT
 mkdir -p "$legacy"
 printf '%s' "$SECRET_SENTINEL" >"$legacy/client.json"
 printf '%s' "$REFRESH_SENTINEL" >"$legacy/token-email1.json"

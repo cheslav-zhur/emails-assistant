@@ -324,7 +324,10 @@ cmd_inject() {
   clear_legacy_creds || return 1
   collect_plans || return 1
   apply_writes || return 1
-  inject_payloads "$container"
+  inject_payloads "$container" || return 1
+  local joined
+  joined="$(IFS=', '; printf '%s' "${ALIAS_LIST[*]}")"
+  echo "Injected access tokens for ${joined}." >&2
 }
 
 known_alias() {
