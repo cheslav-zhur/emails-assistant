@@ -8,7 +8,7 @@ One `Dockerfile`, two targets, same base `mcr.microsoft.com/devcontainers/python
 
 | Target | Tag | Who starts it |
 |---|---|---|
-| `app` | `emails-assistant:app` | Dev Container and the 08:00 run |
+| `app` | `emails-assistant:app` | Dev Container and the digest |
 | `login` | `emails-assistant:login` | `src/host/macos-access-token.sh login` |
 
 GitHub CLI and Node stay in `.devcontainer/devcontainer.json`, on the `app` target only. The morning run does not get them.

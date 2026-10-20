@@ -9,8 +9,8 @@
 
 **emails-assistant** — personal helper for Gmail (multiple accounts).
 
-**Phase 1:** readonly mail from two mailboxes (`email1`, `email2`). Interactive commands print plain text. The morning run writes one local day file.  
-**Delivery:** stdout for `digest` / `search` / `show`; day file + a count notification for the 08:00 LaunchAgent. Telegram is still open.  
+**Phase 1:** readonly mail from two mailboxes (`email1`, `email2`). Interactive commands print plain text. The digest writes one local day file.  
+**Delivery:** stdout for `digest` / `search` / `show`; a day file and a count notification when the digest runs. Telegram is still open.  
 **Later (maybe):** triage, draft replies, MCP for chat agents.
 
 ## Stack (do not change without asking)
@@ -68,5 +68,5 @@ docs/solutions/
 
 ## Current status
 
-Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. A new refresh token comes from `src/host/access-token/access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
+Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac digest file are in place. A new refresh token comes from `src/host/access-token/access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
 **Still open:** Telegram (or any other send channel), triage, draft replies.

@@ -8,7 +8,7 @@ Local/dev setup for **emails-assistant**. Product decisions live in `AGENTS.md`;
 2. `cp .env.example .env` — real addresses only in local `.env` (gitignored).
 3. On the Mac, with Docker running, log in each mailbox: `src/host/access-token/access-token.sh login email1`, then the same command with `email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
 4. `src/host/access-token/access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
-5. Morning agent (Mac, logged-in GUI session): `src/host/install-daily-agent/install-daily-agent.sh`.
+5. Digest (Mac, logged-in GUI session): `src/host/install-daily-agent/install-daily-agent.sh`.
 
 ## Dev Container
 
@@ -63,7 +63,7 @@ On the Mac, in a logged-in GUI session, install the agent. The script builds `em
 src/host/install-daily-agent/install-daily-agent.sh
 ```
 
-The 08:00 run builds that image only when it is missing or `pyproject.toml` has changed. Other mornings do not rebuild it. The login image has its own stamp of the same file.
+The digest builds that image only when it is missing or `pyproject.toml` has changed. A later run does not rebuild it. The login image has its own stamp of the same file.
 
 Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 
@@ -100,9 +100,9 @@ On the Mac (`src/host/access-token/access-token.sh`):
 | `one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
 | `login <alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
 
-`src/host/install-daily-agent/install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
+`src/host/install-daily-agent/install-daily-agent.sh` installs the digest LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
 
-Interactive mail stays on stdout. The morning run writes the day file and shows a count notification. Telegram is still open; do not add a send channel until that is decided.
+Interactive mail stays on stdout. The digest writes the day file and shows a count notification. Telegram is still open; do not add a send channel until that is decided.
 
 ## Checks
 

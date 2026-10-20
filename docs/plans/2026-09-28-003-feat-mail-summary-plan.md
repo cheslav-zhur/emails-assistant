@@ -227,7 +227,7 @@ U1 moves the directory. U2 calls Gemini into that directory and reads the key fr
 - `scripts/macos-daily.sh` — retries every 15 minutes until today's file exists or the local day ends. The repo mount is writable. The banner allows only letters, digits, spaces, and dots.
 - `docs/dev.md` — mail commands do not call the token endpoint. Keychain stays on the Mac.
 - `docs/solutions/security-decisions/2026-10-17-host-script-review-before-merge.md` — do not add a `security -w` writer. The container already has a Gmail token and network.
-- `docs/plans/2026-10-17-1530-feat-mac-login-plan.md` — no new package on the Mac. Login stays a one-shot container.
+- `docs/plans/2026-10-17-feat-mac-login-plan.md` — no new package on the Mac. Login stays a one-shot container.
 - [Agent Platform quickstart](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start) — enterprise client, `roles/aiplatform.user`, `generateContent`.
 - [Model versions](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions) — `gemini-2.5-flash` retires 2026-10-20. `gemini-3.8-flash` is the named replacement.
 - [Welcome credit](https://ai.google.dev/gemini-api/docs/billing) — the credit does not pay Gemini API in AI Studio.
