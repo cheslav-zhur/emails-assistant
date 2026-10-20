@@ -64,6 +64,7 @@ docs/solutions/
 4. Propose improvements briefly; don’t implement large refactors without agreement
 5. No extra markdown/docs unless asked
 6. Keep the public git tree free of personal identifiers (use `email1` / `email2`)
+7. After a Python change, run the CI checks from the repo root when `ruff` and `pyright` are already installed: `ruff check`, `ruff format --check`, `pyright`, then `python -m pytest`. Do not `pip install` to get them. If either tool is missing, say so and stop. Commands and config live in [`docs/dev.md`](docs/dev.md).
 
 ## Current status
 

@@ -93,20 +93,23 @@ def summarize(
     client: Any | None = None,
 ) -> str:
     """Return the finished summary, or an empty string when Gemini does not."""
-    if client is None:
-        if key_path is None:
-            return ""
+    active: Any
+    if client is not None:
+        active = client
+    elif key_path is None:
+        return ""
+    else:
         try:
-            client = _enterprise_client(key_path)
-        except Exception:
+            active = _enterprise_client(key_path)
+        except Exception:  # noqa: BLE001  a bad key becomes an empty summary
             logger.error("Gemini credentials were rejected")
             return ""
     try:
-        response = client.models.generate_content(
+        response = active.models.generate_content(
             model=MODEL,
             contents=_prompt(mail_text),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001  a Gemini miss becomes an empty summary
         logger.error("Gemini did not return a summary")
         return ""
     return _visible_summary(response)

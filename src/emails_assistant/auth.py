@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping, NoReturn
+from typing import Any, NoReturn
 
 from google.auth import _helpers
 from google.oauth2.credentials import Credentials

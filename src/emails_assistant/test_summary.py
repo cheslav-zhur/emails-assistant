@@ -28,7 +28,9 @@ class _Reason:
 class _Response:
     def __init__(self, finish_reason: object, parts: list[_Part]) -> None:
         content = type("Content", (), {"parts": parts})()
-        candidate = type("Candidate", (), {"finish_reason": finish_reason, "content": content})()
+        candidate = type(
+            "Candidate", (), {"finish_reason": finish_reason, "content": content}
+        )()
         self.candidates = [candidate]
 
 
@@ -87,7 +89,9 @@ def test_safety_max_tokens_and_blank_text_are_misses() -> None:
         assert summarize("mail", client=client) == ""
 
 
-def test_a_call_error_is_a_miss_without_the_body(caplog: pytest.LogCaptureFixture) -> None:
+def test_a_call_error_is_a_miss_without_the_body(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     client = _Client(RuntimeError("raw error body secret-subject"))
 
     with caplog.at_level("ERROR"):
@@ -109,7 +113,9 @@ def test_key_path_uses_the_single_keys_file(tmp_path: Path) -> None:
     assert gemini_key_path(root=root) is None
 
 
-def test_enterprise_client_uses_the_service_account_file(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_enterprise_client_uses_the_service_account_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     key = tmp_path / "gemini.json"
     payload = {
         "type": "service_account",
@@ -131,7 +137,10 @@ def test_enterprise_client_uses_the_service_account_file(tmp_path: Path, caplog:
         return _Client(_Response("STOP", [_Part("Ok.")]))
 
     with (
-        patch("google.oauth2.service_account.Credentials.from_service_account_info", side_effect=_info),
+        patch(
+            "google.oauth2.service_account.Credentials.from_service_account_info",
+            side_effect=_info,
+        ),
         patch("google.genai.Client", side_effect=_capture),
         caplog.at_level("ERROR"),
     ):
@@ -149,7 +158,9 @@ def test_enterprise_client_uses_the_service_account_file(tmp_path: Path, caplog:
     assert "not-a-real-key" not in caplog.text
 
 
-def test_a_bad_key_file_is_a_miss_without_the_key(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_a_bad_key_file_is_a_miss_without_the_key(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     key = tmp_path / "gemini.json"
     key.write_text('{"private_key":"not-a-real-key"}', encoding="utf-8")
 

@@ -8,6 +8,8 @@ import sys
 
 from login import LoginError, login
 
+logger = logging.getLogger(__name__)
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
@@ -39,7 +41,7 @@ def main(argv: list[str] | None = None) -> None:
             open_browser=not args.no_browser,
         )
     except LoginError as exc:
-        logging.error("%s", exc)
+        logger.error("%s", exc)
         sys.exit(1)
     sys.stdout.write(creds.to_json())
 

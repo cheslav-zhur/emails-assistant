@@ -8,6 +8,9 @@ import os
 import sys
 from typing import Any
 
+from google.auth.external_account_authorized_user import (
+    Credentials as ExternalAccountCredentials,
+)
 from google.oauth2.credentials import Credentials
 
 from shared import GMAIL_READONLY_SCOPE, resolve_alias
@@ -50,7 +53,7 @@ def login(
     client_json: str,
     oauth_port: int = 0,
     open_browser: bool = True,
-) -> Credentials:
+) -> Credentials | ExternalAccountCredentials:
     """Browser OAuth. Returns the mailbox token; the caller stores it.
 
     The client secret is accepted for this run only. Nothing is written to
@@ -87,5 +90,5 @@ def login(
         )
     except LoginError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001  consent failure stays LoginError, without the cause
         raise LoginError(LOGIN_FAILED_NOTICE) from None

@@ -6,12 +6,12 @@ import json
 import os
 import stat
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
-from typing import Iterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httplib2
@@ -58,7 +58,9 @@ def _assert_bearer_only(test: unittest.TestCase, cred: Credentials) -> None:
 
 
 @contextmanager
-def _gmail_transport(status: int, payload: bytes) -> Iterator[tuple[list[str], list[Credentials]]]:
+def _gmail_transport(
+    status: int, payload: bytes
+) -> Iterator[tuple[list[str], list[Credentials]]]:
     """Record AuthorizedHttp calls. The inner httplib2 transport never leaves the test."""
     uris: list[str] = []
     seen: list[Credentials] = []
@@ -67,8 +69,8 @@ def _gmail_transport(status: int, payload: bytes) -> Iterator[tuple[list[str], l
     def spy_init(
         self: AuthorizedHttp,
         credentials: Credentials,
-        *args: object,
-        **kwargs: object,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         seen.append(credentials)
         real_init(self, credentials, *args, **kwargs)
@@ -108,7 +110,9 @@ class _RecordingHttp:
     ) -> tuple[httplib2.Response, bytes]:
         self.uris.append(uri)
         self.headers.append(dict(headers or {}))
-        return httplib2.Response({"status": "200"}), b'{"emailAddress":"alias@example.com"}'
+        return httplib2.Response(
+            {"status": "200"}
+        ), b'{"emailAddress":"alias@example.com"}'
 
 
 class LoadAccessCredentialsTest(unittest.TestCase):
@@ -130,7 +134,9 @@ class LoadAccessCredentialsTest(unittest.TestCase):
     def test_past_expiry_raises_before_http(self) -> None:
         http = _RecordingHttp()
         with self.assertRaises(CredentialError):
-            load_access_credentials(_safe_payload(expiry=_expiry_z(timedelta(hours=-1))))
+            load_access_credentials(
+                _safe_payload(expiry=_expiry_z(timedelta(hours=-1)))
+            )
         self.assertEqual(http.uris, [])
 
     def test_expiry_inside_refresh_window_raises_before_http(self) -> None:
@@ -179,7 +185,11 @@ def _run_cli(
         try:
             entry(argv)
         except SystemExit as exc:
-            return exc.code if exc.code is not None else 0, stdout.getvalue(), stderr.getvalue()
+            return (
+                exc.code if exc.code is not None else 0,
+                stdout.getvalue(),
+                stderr.getvalue(),
+            )
     return 0, stdout.getvalue(), stderr.getvalue()
 
 
@@ -224,7 +234,9 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         for cred in seen:
             _assert_bearer_only(self, cred)
         self.assertTrue(uris)
-        self.assertTrue(all(uri.startswith("https://gmail.googleapis.com/") for uri in uris))
+        self.assertTrue(
+            all(uri.startswith("https://gmail.googleapis.com/") for uri in uris)
+        )
         self.assertNotIn(_TOKEN_ENDPOINT, uris)
         self.assertNotIn("/token", " ".join(uris))
         self.assertNotIn(_TOKEN, err)
@@ -252,7 +264,9 @@ class MailCommandAccessTokenTest(unittest.TestCase):
                 expiry=_expiry_z(timedelta(minutes=-5)),
             ),
         )
-        with patch("emails_assistant.cli.list_recent_messages", return_value=[]) as gmail:
+        with patch(
+            "emails_assistant.cli.list_recent_messages", return_value=[]
+        ) as gmail:
             code, _out, err = _run_cli(["digest"])
         self.assertNotEqual(code, 0)
         self.assertIn(ACCESS_RERUN_NOTICE, f"{code}\n{err}")
@@ -342,7 +356,9 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         )
         auth_url = "https://accounts.google.com/o/oauth2/auth?test=1"
         before = {path for path in Path.cwd().rglob("*") if path.is_file()}
-        with patch("google_auth_oauthlib.flow.InstalledAppFlow.from_client_config") as factory:
+        with patch(
+            "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config"
+        ) as factory:
             flow = MagicMock()
             factory.return_value = flow
             flow.authorization_url.return_value = (auth_url, "state")
@@ -386,4 +402,6 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertEqual(path, _SHM_DIR / "access-email1.json")
         self.assertEqual(modes, [0o600])
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["access_token"], _TOKEN)
+        self.assertEqual(
+            json.loads(path.read_text(encoding="utf-8"))["access_token"], _TOKEN
+        )

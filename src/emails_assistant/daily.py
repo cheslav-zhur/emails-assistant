@@ -6,7 +6,7 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -82,7 +82,9 @@ def decide_daily(
     kept_sections: list[tuple[str, tuple[DailyMessage, ...]]] = []
     total = 0
     for box in mailboxes:
-        kept = tuple(message for message in box.messages if _as_utc(message.arrived_at) > start)
+        kept = tuple(
+            message for message in box.messages if _as_utc(message.arrived_at) > start
+        )
         total += len(kept)
         kept_sections.append((box.alias, kept))
     if total == 0:
@@ -154,7 +156,7 @@ def _window_start(directory: Path, today: Path, now: datetime) -> datetime:
     if prior is None:
         return now - timedelta(hours=24)
     epoch = int(prior.stat().st_mtime)
-    return datetime.fromtimestamp(epoch, tz=timezone.utc)
+    return datetime.fromtimestamp(epoch, tz=UTC)
 
 
 def _latest_prior(directory: Path, today: Path) -> Path | None:
@@ -175,8 +177,8 @@ def _latest_prior(directory: Path, today: Path) -> Path | None:
 
 def _as_utc(moment: datetime) -> datetime:
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(timezone.utc)
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
 
 
 def _format_daily(

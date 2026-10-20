@@ -102,12 +102,7 @@ def extract_body_text(msg: dict[str, Any]) -> str:
 def smoke_list_one(creds: Credentials) -> dict[str, str]:
     """Fetch one message metadata; returns id + subject/from when present."""
     service = build_gmail_service(creds)
-    listing = (
-        service.users()
-        .messages()
-        .list(userId="me", maxResults=1)
-        .execute()
-    )
+    listing = service.users().messages().list(userId="me", maxResults=1).execute()
     messages = listing.get("messages") or []
     if not messages:
         return {"id": "", "subject": "(mailbox empty)", "from": ""}

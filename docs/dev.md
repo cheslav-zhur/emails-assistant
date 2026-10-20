@@ -33,7 +33,7 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 - GitHub CLI / `GH_TOKEN`
 - Claude Code mounts/features
 - Compose
-- Extra formatters/linters unless asked
+- Editor formatters or linters beyond Pylance. CLI checks are Ruff and Pyright from the `dev` extra.
 
 ### Host vs container (auth)
 
@@ -103,6 +103,19 @@ On the Mac (`src/host/macos-access-token.sh`):
 `src/host/macos-install-daily-agent.sh` installs the 08:00 LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
 
 Interactive mail stays on stdout. The morning run writes the day file and shows a count notification. Telegram is still open; do not add a send channel until that is decided.
+
+## Checks
+
+The `dev` extra pins `pytest`, `ruff`, and `pyright`. Opening the Dev Container installs them through `postCreateCommand`. From the repo root, the same commands CI runs:
+
+```bash
+ruff check
+ruff format --check
+pyright
+python -m pytest
+```
+
+`ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only.
 
 ## Env
 

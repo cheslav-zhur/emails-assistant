@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from emails_assistant.daily import (
@@ -15,11 +15,16 @@ from emails_assistant.daily import (
     resolve_daily_dir,
 )
 
-_NOW = datetime(2026, 9, 29, 10, 30, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 
 
 def _msg(moment: datetime, subject: str, sender: str = "a@example.com") -> DailyMessage:
-    return DailyMessage(arrived_at=moment, subject=subject, sender=sender, date="Tue, 29 Sep 2026 10:00:00 +0000")
+    return DailyMessage(
+        arrived_at=moment,
+        subject=subject,
+        sender=sender,
+        date="Tue, 29 Sep 2026 10:00:00 +0000",
+    )
 
 
 def _prior(directory: Path, name: str, moment: datetime, text: str = "prior\n") -> Path:
@@ -31,17 +36,23 @@ def _prior(directory: Path, name: str, moment: datetime, text: str = "prior\n") 
 
 
 def _reads(*pairs: tuple[str, tuple[DailyMessage, ...]]) -> tuple[MailboxRead, ...]:
-    return tuple(MailboxRead(alias=alias, messages=messages) for alias, messages in pairs)
+    return tuple(
+        MailboxRead(alias=alias, messages=messages) for alias, messages in pairs
+    )
 
 
 def test_first_daily_window_starts_24_hours_before_clock(tmp_path: Path) -> None:
-    decision = decide_daily(daily_dir=tmp_path, now=_NOW, mailboxes=_reads(("email1", ()), ("email2", ())))
+    decision = decide_daily(
+        daily_dir=tmp_path, now=_NOW, mailboxes=_reads(("email1", ()), ("email2", ()))
+    )
 
     assert decision.window_start == _NOW - timedelta(hours=24)
 
 
-def test_message_at_prior_mtime_is_outside_and_later_message_is_inside(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+def test_message_at_prior_mtime_is_outside_and_later_message_is_inside(
+    tmp_path: Path,
+) -> None:
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     at_boundary = _msg(modified, "at-boundary")
     inside = _msg(modified + timedelta(seconds=1), "after-boundary")
@@ -59,8 +70,8 @@ def test_message_at_prior_mtime_is_outside_and_later_message_is_inside(tmp_path:
 
 
 def test_window_starts_at_the_latest_prior_file(tmp_path: Path) -> None:
-    older = datetime(2026, 9, 27, 8, 10, tzinfo=timezone.utc)
-    newer = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 27, 8, 10, tzinfo=UTC)
+    newer = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-27.txt", older)
     _prior(tmp_path, "2026-09-28.txt", newer)
 
@@ -74,8 +85,8 @@ def test_window_starts_at_the_latest_prior_file(tmp_path: Path) -> None:
 
 
 def test_a_newer_stray_txt_does_not_move_the_window(tmp_path: Path) -> None:
-    prior = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
-    stray = datetime(2026, 9, 28, 20, 0, tzinfo=timezone.utc)
+    prior = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
+    stray = datetime(2026, 9, 28, 20, 0, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", prior)
     _prior(tmp_path, "notes.txt", stray)
 
@@ -89,7 +100,7 @@ def test_a_newer_stray_txt_does_not_move_the_window(tmp_path: Path) -> None:
 
 
 def test_only_a_stray_txt_uses_the_24_hour_window(tmp_path: Path) -> None:
-    _prior(tmp_path, "notes.txt", datetime(2026, 9, 28, 20, 0, tzinfo=timezone.utc))
+    _prior(tmp_path, "notes.txt", datetime(2026, 9, 28, 20, 0, tzinfo=UTC))
 
     decision = decide_daily(
         daily_dir=tmp_path,
@@ -119,7 +130,7 @@ def test_existing_today_file_is_left_and_sends_no_notice(tmp_path: Path) -> None
 
 
 def test_no_new_mail_still_plans_a_zero_file(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     stale = _msg(modified, "already-shown")
 
@@ -139,7 +150,7 @@ def test_no_new_mail_still_plans_a_zero_file(tmp_path: Path) -> None:
 
 
 def test_mailbox_error_writes_nothing_and_keeps_prior_window(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     subject = "unread-subject"
 
@@ -162,7 +173,7 @@ def test_mailbox_error_writes_nothing_and_keeps_prior_window(tmp_path: Path) -> 
 
 
 def test_count_is_the_sum_across_both_aliases(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     first = tuple(_msg(_NOW, f"one-{index}", "one@example.com") for index in range(2))
     second = tuple(_msg(_NOW, f"two-{index}", "two@example.com") for index in range(3))
@@ -186,7 +197,7 @@ def test_count_is_the_sum_across_both_aliases(tmp_path: Path) -> None:
 
 
 def test_summary_replaces_the_list_and_keeps_the_count(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     first = tuple(_msg(_NOW, f"one-{index}") for index in range(2))
     second = tuple(_msg(_NOW, f"two-{index}") for index in range(3))
@@ -219,7 +230,9 @@ def test_summary_length_does_not_block_the_file(tmp_path: Path) -> None:
         decision = decide_daily(
             daily_dir=tmp_path,
             now=_NOW,
-            mailboxes=_reads(("email1", (_msg(_NOW, "hidden-subject"),)), ("email2", ())),
+            mailboxes=_reads(
+                ("email1", (_msg(_NOW, "hidden-subject"),)), ("email2", ())
+            ),
             summary=summary,
         )
         assert decision.write is True
@@ -228,7 +241,7 @@ def test_summary_length_does_not_block_the_file(tmp_path: Path) -> None:
 
 
 def test_blank_summary_with_mail_writes_nothing(tmp_path: Path) -> None:
-    modified = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     _prior(tmp_path, "2026-09-28.txt", modified)
     subject = "unread-subject"
 
@@ -282,9 +295,11 @@ def test_mailbox_error_ignores_a_summary(tmp_path: Path) -> None:
     assert subject not in decision.text
 
 
-def test_summary_input_uses_body_then_snippet_and_drops_the_boundary(tmp_path: Path) -> None:
+def test_summary_input_uses_body_then_snippet_and_drops_the_boundary(
+    tmp_path: Path,
+) -> None:
     del tmp_path
-    start = datetime(2026, 9, 28, 8, 10, tzinfo=timezone.utc)
+    start = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
     at_boundary = DailyMessage(
         arrived_at=start,
         subject="at-boundary",
@@ -336,7 +351,9 @@ def test_daily_dir_defaults_to_repo_digests_and_honors_override(tmp_path: Path) 
 
     assert chosen == repo / "digests"
     assert "Application Support" not in chosen.parts
-    assert resolve_daily_dir(environ={"EMAILS_ASSISTANT_DAILY_DIR": str(custom)}) == custom
+    assert (
+        resolve_daily_dir(environ={"EMAILS_ASSISTANT_DAILY_DIR": str(custom)}) == custom
+    )
 
 
 def test_gitignore_ignores_digests() -> None:

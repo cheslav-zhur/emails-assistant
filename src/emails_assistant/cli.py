@@ -10,6 +10,7 @@ import stat
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import NoReturn
 
 from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
@@ -20,14 +21,6 @@ from emails_assistant.auth import (
     CredentialError,
     load_access_credentials,
 )
-from shared import known_aliases, resolve_alias
-from emails_assistant.digest import format_digest, format_search, format_show
-from emails_assistant.gmail_api import (
-    get_message,
-    list_recent_messages,
-    search_messages,
-    smoke_list_one,
-)
 from emails_assistant.daily import (
     DailyMessage,
     MailboxRead,
@@ -35,6 +28,16 @@ from emails_assistant.daily import (
     render_summary_input,
     resolve_daily_dir,
 )
+from emails_assistant.digest import format_digest, format_search, format_show
+from emails_assistant.gmail_api import (
+    get_message,
+    list_recent_messages,
+    search_messages,
+    smoke_list_one,
+)
+from shared import known_aliases, resolve_alias
+
+logger = logging.getLogger(__name__)
 
 _DAILY_FAILURE = "Daily digest did not run."
 
@@ -101,7 +104,7 @@ def _daily_now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _daily_fail() -> None:
+def _daily_fail() -> NoReturn:
     print(_DAILY_FAILURE)
     raise SystemExit(1)
 
@@ -165,7 +168,7 @@ def _run_daily() -> None:
                 for item in summaries
             )
             reads.append(MailboxRead(alias=alias, messages=messages))
-    except Exception:
+    except Exception:  # noqa: BLE001  mailbox failure stays the stable daily failure
         _daily_fail()
 
     from emails_assistant.summary import gemini_key_path, summarize
@@ -178,7 +181,9 @@ def _run_daily() -> None:
         summary = ""
     else:
         summary = summarize(mail_text, key_path=key)
-    decision = decide_daily(daily_dir=directory, now=now, mailboxes=reads, summary=summary)
+    decision = decide_daily(
+        daily_dir=directory, now=now, mailboxes=reads, summary=summary
+    )
     if decision.failure:
         print(decision.failure)
         raise SystemExit(1)
@@ -324,12 +329,12 @@ def main(argv: list[str] | None = None) -> None:
     except RefreshError:
         raise SystemExit(ACCESS_RERUN_NOTICE) from None
     except CredentialError as exc:
-        logging.error("%s", exc)
+        logger.error("%s", exc)
         sys.exit(1)
     except SystemExit:
         raise
     except Exception:
-        logging.exception("Command failed")
+        logger.exception("Command failed")
         sys.exit(1)
 
 
