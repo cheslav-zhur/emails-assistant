@@ -113,9 +113,11 @@ ruff check
 ruff format --check
 pyright
 python -m pytest
+shellcheck src/host/*/*.sh
+for test in src/host/*/*.test.sh; do bash "$test"; done
 ```
 
-`ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only.
+`ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only. `shellcheck` is the binary on the GitHub Ubuntu runner. The Dev Container does not install it.
 
 ## Env
 

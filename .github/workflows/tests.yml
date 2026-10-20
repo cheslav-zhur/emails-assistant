@@ -36,5 +36,21 @@ jobs:
       - name: Types
         run: pyright
 
-      - name: Run tests
+      - name: Run pytest
         run: python -m pytest
+
+      - name: Shellcheck
+        run: shellcheck src/host/*/*.sh
+
+      - name: Run shell tests
+        run: |
+          shopt -s nullglob
+          tests=(src/host/*/*.test.sh)
+          if [[ ${#tests[@]} -eq 0 ]]; then
+            echo "no shell tests in src/host/*/*.test.sh"
+            exit 1
+          fi
+          for test in "${tests[@]}"; do
+            echo "== $test"
+            bash "$test"
+          done
