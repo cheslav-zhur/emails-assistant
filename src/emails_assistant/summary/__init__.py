@@ -51,7 +51,7 @@ def _visible_summary(response: object) -> str:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def gemini_key_path(*, root: Path | None = None) -> Path | None:

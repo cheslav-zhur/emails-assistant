@@ -2,8 +2,8 @@
 # Runs the host script as its own process. Stubs are executables, not shell functions.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCRIPT="$ROOT/src/host/macos-access-token.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SCRIPT="$ROOT/src/host/access-token/access-token.sh"
 BIN="$(mktemp -d)"
 
 REFRESH_SENTINEL='1//fixture+refresh='
@@ -426,7 +426,7 @@ set -e
 unset EMAILS_ASSISTANT_OPEN EMAILS_ASSISTANT_IMAGE_STAMP
 
 if grep -R -n -e "$REFRESH_SENTINEL" -e "$SECRET_SENTINEL" \
-  --exclude-dir=.git --exclude=macos-access-token.test.sh "$ROOT" >/dev/null
+  --exclude-dir=.git --exclude=access-token.test.sh "$ROOT" >/dev/null
 then
   fail "a secret file was left in the repo"
 fi

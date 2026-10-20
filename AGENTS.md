@@ -68,5 +68,5 @@ docs/solutions/
 
 ## Current status
 
-Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. A new refresh token comes from `src/host/macos-access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
+Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac morning day file are in place. A new refresh token comes from `src/host/access-token/access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
 **Still open:** Telegram (or any other send channel), triage, draft replies.

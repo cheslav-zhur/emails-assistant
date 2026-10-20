@@ -2,7 +2,7 @@
 # Install the per-user LaunchAgent for the daily digest. Run on the Mac.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LABEL="com.emails-assistant.daily"
 SRC="$ROOT/src/host/${LABEL}.plist"
 DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
@@ -21,14 +21,14 @@ launchctl_cmd() {
 }
 
 mkdir -p "${HOME}/Library/LaunchAgents"
-"$ROOT/src/host/macos-daily.sh" build-image
+"$ROOT/src/host/daily/daily.sh" build-image
 python3 -c '
 import pathlib, sys
 src, dst, root = sys.argv[1:]
 text = pathlib.Path(src).read_text(encoding="utf-8")
 if "REPLACE_WITH_REPO" not in text:
     raise SystemExit("plist is missing REPLACE_WITH_REPO")
-path = root + "/src/host/macos-daily.sh"
+path = root + "/src/host/daily/daily.sh"
 pathlib.Path(dst).write_text(text.replace("REPLACE_WITH_REPO", root), encoding="utf-8")
 if path not in pathlib.Path(dst).read_text(encoding="utf-8"):
     raise SystemExit("installed plist is missing the script path")
