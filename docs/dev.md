@@ -39,7 +39,7 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 
 macOS **Keychain** is the only durable store for the OAuth client secret and each mailbox token. Keychain reads and writes stay on the Mac. Mail commands do not call Google's token endpoint.
 
-`src/host/access-token/access-token.sh` is the host script. It refreshes a mailbox access token when the stored expiry is missing or already inside the 3 minute 45 second window, then hands off `access_token` and `expiry` only.
+`src/host/access-token/access-token.sh` is the host script. Login asks for the App scopes in `src/shared.py`: `gmail.readonly`, `gmail.labels`, and `gmail.settings.basic`. `inject` refreshes with those scopes when the stored expiry is missing or already inside the 3 minute 45 second window, stores that access token in Keychain, and hands off `access_token` and `expiry` only. `one-shot` always mints an access token limited to `gmail.readonly` and does not store it, so a fresh App token is not reused for the morning run.
 
 - **Open Dev Container.** `inject <container>` writes one file per alias at `/dev/shm/emails-assistant/access-<alias>.json` (mode `0600`, owner `vscode`) via `docker exec -i -u vscode`. On success it prints `Injected access tokens for <aliases>.` on stderr and does not print a token. `smoke`, `digest`, `search`, and `show` read those files. They do not refresh.
 - **One-shot.** `one-shot` prints one JSON object per mailbox on stdout and does not read or write the Dev Container tmpfs. Keep that stdout in memory. Do not write it to the day file, the repo, shell history, or logs.

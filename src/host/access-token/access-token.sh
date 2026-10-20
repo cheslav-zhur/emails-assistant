@@ -76,19 +76,26 @@ def main():
         sys.stdout.write("yes" if due else "no")
         return
     if cmd == "form-body":
-        client_raw, token_raw = parts(2)
+        client_raw, token_raw, scope_raw = parts(3)
         client = loads(client_raw)
         token = loads(token_raw)
         installed = client.get("installed") or client.get("web") or {}
         if not isinstance(installed, dict):
+            fail(1)
+        scope = scope_raw.strip()
+        parts_ok = scope.split(" ")
+        if not parts_ok or any(
+            (not part) or (not part.startswith("https://")) for part in parts_ok
+        ):
             fail(1)
         fields = {
             "client_id": installed.get("client_id") or token.get("client_id"),
             "client_secret": installed.get("client_secret") or token.get("client_secret"),
             "refresh_token": token.get("refresh_token"),
             "grant_type": "refresh_token",
+            "scope": scope,
         }
-        if not all(isinstance(fields[key], str) and fields[key] for key in ("client_id", "client_secret", "refresh_token")):
+        if not all(isinstance(fields[key], str) and fields[key] for key in ("client_id", "client_secret", "refresh_token", "scope")):
             fail(1)
         sys.stdout.write(urlencode(fields))
         return
@@ -107,7 +114,7 @@ def main():
         response = loads(response_raw)
         if "refresh_token" in response:
             fail(2)
-        if response.get("error") == "invalid_grant":
+        if response.get("error") in {"invalid_grant", "invalid_scope"}:
             raise SystemExit(3)
         now = parse_now(now_raw)
         try:
@@ -138,6 +145,13 @@ def main():
         if not isinstance(payload, dict) or set(payload) != {"access_token", "expiry"}:
             fail(1)
         sys.stdout.write(json.dumps(access_payload(payload["access_token"], payload["expiry"]), separators=(",", ":")))
+        return
+    if cmd == "drop-write":
+        plan = loads(sys.stdin.read())
+        if not isinstance(plan, dict) or not isinstance(plan.get("payload"), dict):
+            fail(1)
+        plan["write"] = None
+        sys.stdout.write(json.dumps(plan, separators=(",", ":")))
         return
     fail(1)
 
@@ -231,8 +245,25 @@ clear_legacy_creds() {
   fi
 }
 
+gmail_scope() {
+  local which="$1"
+  PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" python3 -c '
+import sys
+from shared import GMAIL_APP_SCOPES, GMAIL_READONLY_SCOPE
+sys.stdout.write(GMAIL_READONLY_SCOPE if sys.argv[1] == "readonly" else " ".join(GMAIL_APP_SCOPES))
+' "$which"
+}
+
+post_refresh() {
+  local body="$1"
+  printf '%s' "$body" | curl_cmd -sS -X POST \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary @- \
+    https://oauth2.googleapis.com/token
+}
+
 refresh_or_keep() {
-  local alias="$1" client="$2" now="$3"
+  local alias="$1" client="$2" now="$3" scope="$4"
   local existing decision body response
   existing="$(security_cmd find-generic-password -s "$SERVICE" -a "token/${alias}" -w)" || return 1
   decision="$(printf '%s\0%s\0' "$existing" "$now" | host_py needs-refresh)" || return 1
@@ -240,26 +271,40 @@ refresh_or_keep() {
     printf '%s\0' "$existing" | host_py keep-plan
     return $?
   fi
-  body="$(printf '%s\0%s\0' "$client" "$existing" | host_py form-body)" || return 1
-  response="$(
-    printf '%s' "$body" | curl_cmd -sS -X POST \
-      -H "Content-Type: application/x-www-form-urlencoded" \
-      --data-binary @- \
-      https://oauth2.googleapis.com/token
-  )" || return 1
+  body="$(printf '%s\0%s\0%s\0' "$client" "$existing" "$scope" | host_py form-body)" || return 1
+  response="$(post_refresh "$body")" || return 1
   printf '%s\0%s\0%s\0' "$existing" "$response" "$now" | host_py merge-plan
 }
 
+refresh_readonly() {
+  local alias="$1" client="$2" now="$3"
+  local existing body response plan scope
+  existing="$(security_cmd find-generic-password -s "$SERVICE" -a "token/${alias}" -w)" || return 1
+  scope="$(gmail_scope readonly)" || return 1
+  body="$(printf '%s\0%s\0%s\0' "$client" "$existing" "$scope" | host_py form-body)" || return 1
+  response="$(post_refresh "$body")" || return 1
+  plan="$(printf '%s\0%s\0%s\0' "$existing" "$response" "$now" | host_py merge-plan)" || return $?
+  printf '%s' "$plan" | host_py drop-write
+}
+
 collect_plans() {
+  local mode="$1"
   ALIAS_LIST=()
   PLANS=()
-  local now client alias plan status=0
+  local now client alias plan status=0 scope=""
   now="$(now_utc)"
   client="$(security_cmd find-generic-password -s "$SERVICE" -a "oauth-client" -w)" || return 1
+  if [[ "$mode" == "inject" ]]; then
+    scope="$(gmail_scope app)" || return 1
+  fi
   while IFS= read -r alias; do
     [[ -n "$alias" ]] || continue
     status=0
-    plan="$(refresh_or_keep "$alias" "$client" "$now")" || status=$?
+    if [[ "$mode" == "one-shot" ]]; then
+      plan="$(refresh_readonly "$alias" "$client" "$now")" || status=$?
+    else
+      plan="$(refresh_or_keep "$alias" "$client" "$now" "$scope")" || status=$?
+    fi
     if [[ "$status" -ne 0 ]]; then
       if [[ "$status" -eq 3 ]]; then
         echo "Login is required for ${alias}. The refresh token was rejected." >&2
@@ -310,8 +355,7 @@ write_access_token_file(sys.argv[1], sys.stdin.read())
 
 cmd_one_shot() {
   clear_legacy_creds || return 1
-  collect_plans || return 1
-  apply_writes || return 1
+  collect_plans one-shot || return 1
   print_payloads
 }
 
@@ -322,7 +366,7 @@ cmd_inject() {
     return 1
   fi
   clear_legacy_creds || return 1
-  collect_plans || return 1
+  collect_plans inject || return 1
   apply_writes || return 1
   inject_payloads "$container" || return 1
   local joined
@@ -406,8 +450,8 @@ usage() {
   cat <<EOF
 usage: $(basename "$0") <command>
 
-  inject <container>     refresh due tokens and write access tokens into the container
-  one-shot               refresh due tokens and print one access-token JSON per mailbox
+  inject <container>     refresh due App-scope tokens and write access tokens into the container
+  one-shot               mint readonly access tokens and print one JSON object per mailbox
   login <alias>          open the system browser, take the loopback redirect, store the mailbox token
 
 Keychain and docker run on the Mac host. Mail runs receive an access token only.

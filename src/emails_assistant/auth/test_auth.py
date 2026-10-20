@@ -28,6 +28,7 @@ from emails_assistant.auth import (
 )
 from emails_assistant.cli import main
 from login.__main__ import main as login_main
+from shared import GMAIL_APP_SCOPES
 
 _SHM_DIR = Path("/dev/shm/emails-assistant")
 
@@ -412,6 +413,10 @@ class MailCommandAccessTokenTest(unittest.TestCase):
         self.assertNotIn(_CLIENT_SECRET, err)
         after = _project_files()
         self.assertEqual(before, after)
+        self.assertEqual(
+            factory.call_args.kwargs["scopes"],
+            list(GMAIL_APP_SCOPES),
+        )
 
     def test_access_file_is_created_mode_0600_before_write(self) -> None:
         from emails_assistant.cli import write_access_token_file

@@ -13,7 +13,7 @@ from google.auth.external_account_authorized_user import (
 )
 from google.oauth2.credentials import Credentials
 
-from shared import GMAIL_READONLY_SCOPE, resolve_alias
+from shared import GMAIL_APP_SCOPES, resolve_alias
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def login(
     resolve_alias(alias)
     flow = InstalledAppFlow.from_client_config(
         _parse_client_json(client_json),
-        scopes=[GMAIL_READONLY_SCOPE],
+        scopes=list(GMAIL_APP_SCOPES),
     )
     original_authorization_url = flow.authorization_url
 

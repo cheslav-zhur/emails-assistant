@@ -5,6 +5,12 @@ from __future__ import annotations
 import os
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+# Login and inject. The morning one-shot asks only for GMAIL_READONLY_SCOPE.
+GMAIL_APP_SCOPES = (
+    GMAIL_READONLY_SCOPE,
+    "https://www.googleapis.com/auth/gmail.labels",
+    "https://www.googleapis.com/auth/gmail.settings.basic",
+)
 
 
 def known_aliases() -> tuple[str, ...]:

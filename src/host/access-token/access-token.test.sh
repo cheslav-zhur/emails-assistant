@@ -169,14 +169,21 @@ fi
 reset_io
 install_mailbox email1 ya29-still-good "2026-09-28T12:10:00Z"
 install_mailbox email2 ya29-still-good-2 "2026-09-28T12:10:00Z"
+queue_curl '{"access_token":"ya29-readonly-1","expires_in":3600,"token_type":"Bearer"}'
+queue_curl '{"access_token":"ya29-readonly-2","expires_in":3600,"token_type":"Bearer"}'
 stdout="$(run one-shot)"
-[[ "$(cat "$IO_DIR/curl_n")" -eq 0 ]] || fail "fresh token was refreshed"
+[[ "$(cat "$IO_DIR/curl_n")" -eq 2 ]] || fail "one-shot did not mint readonly tokens"
 [[ "$(cat "$IO_DIR/docker_n")" -eq 0 ]] || fail "one-shot called docker"
 mapfile -t lines <<<"$stdout"
 [[ "${#lines[@]}" -eq 2 ]] || fail "expected two payloads"
 assert_access_only "${lines[0]}"
 assert_access_only "${lines[1]}"
-[[ "${lines[0]}" == *'ya29-still-good'* && "${lines[1]}" == *'ya29-still-good-2'* ]] || fail "payload aliases"
+[[ "${lines[0]}" == *'ya29-readonly-1'* && "${lines[1]}" == *'ya29-readonly-2'* ]] || fail "payload aliases"
+stdin0="$(cat "$IO_DIR/curl_stdin.0")"
+[[ "$stdin0" == *'scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly'* ]] || fail "one-shot scope was not readonly"
+[[ "$stdin0" != *'gmail.modify'* ]] || fail "one-shot requested modify"
+[[ "$(sec_get token/email1)" == *'ya29-still-good'* ]] || fail "one-shot wrote the readonly token back"
+[[ "$(wc -l <"$IO_DIR/sec_writes" | tr -d ' ')" -eq 0 ]] || fail "one-shot wrote keychain"
 assert_no_secret_output "$stdout"
 
 reset_io
@@ -192,20 +199,13 @@ stdin0="$(cat "$IO_DIR/curl_stdin.0")"
 [[ "$stdin0" != *"$REFRESH_SENTINEL"* && "$stdin0" != *"$SECRET_SENTINEL"* ]] || fail "raw secret on curl stdin"
 args0="$(cat "$IO_DIR/curl_args.0")"
 [[ "$args0" != *"$REFRESH_SENTINEL"* && "$args0" != *"$SECRET_SENTINEL"* ]] || fail "secret was a curl argument"
-python3 -c '
-import json, sys
-obj = json.loads(sys.argv[1])
-assert obj["token"] == "ya29-new-access", obj["token"]
-assert obj["expiry"] == "2026-09-28T13:00:00Z", obj["expiry"]
-assert obj["refresh_token"] == sys.argv[2]
-assert obj["client_secret"] == sys.argv[3]
-assert obj["client_id"] == "client-id"
-assert obj["token_uri"] == "https://oauth2.googleapis.com/token"
-' "$(sec_get token/email1)" "$REFRESH_SENTINEL" "$SECRET_SENTINEL"
 mapfile -t lines <<<"$stdout"
 assert_access_only "${lines[0]}"
 assert_access_only "${lines[1]}"
 [[ "${lines[0]}" == *'ya29-new-access'* && "${lines[1]}" == *'ya29-new-access-2'* ]] || fail "new tokens were not passed on"
+[[ "$(sec_get token/email1)" == *'ya29-old-access'* ]] || fail "one-shot replaced the stored token"
+[[ "$stdin0" == *'scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly'* ]] || fail "due one-shot scope was not readonly"
+[[ "$stdin0" != *'gmail.modify'* ]] || fail "due one-shot requested modify"
 assert_no_secret_output "$stdout"
 
 reset_io
@@ -244,7 +244,7 @@ unset TZ
 [[ "$(cat "$IO_DIR/curl_n")" -eq 1 ]] || fail "+07 expiry was treated as a future UTC expiry"
 [[ "$stdout" == *'ya29-from-offset'* ]] || fail "offset expiry did not refresh"
 stored="$(sec_get token/email1)"
-[[ "$stored" == *'2026-09-28T13:00:00Z'* && "$stored" != *'+07'* ]] || fail "stored expiry was not UTC Z"
+[[ "$stored" == *'+07'* && "$stored" != *'ya29-from-offset'* ]] || fail "one-shot rewrote the stored token"
 
 snapshot_live() {
   local out="$1" nullglob_was=0
@@ -268,12 +268,15 @@ live_dir="/dev/shm/emails-assistant"
 before="$(mktemp)"
 after="$(mktemp)"
 snapshot_live "$before"
+queue_curl '{"access_token":"ya29-readonly-shot","expires_in":3600,"token_type":"Bearer"}'
 stdout="$(run one-shot)"
 snapshot_live "$after"
 cmp -s "$before" "$after" || fail "one-shot wrote the dev container token"
 rm -f "$before" "$after"
 [[ "$(cat "$IO_DIR/docker_n")" -eq 0 ]] || fail "one-shot touched docker"
 assert_access_only "$stdout"
+[[ "$stdout" == *'ya29-readonly-shot'* ]] || fail "one-shot reused the stored token"
+[[ "$(sec_get token/email1)" == *'ya29-inject-access'* ]] || fail "one-shot wrote keychain"
 
 set +e
 run inject "box-name" "$SECRET_SENTINEL" >/dev/null 2>&1
@@ -296,6 +299,23 @@ stdin="$(cat "$IO_DIR/docker_stdin.0")"
 assert_access_only "$stdin"
 [[ "$stdin" == *'ya29-inject-access'* ]] || fail "inject stdin missing token"
 
+reset_io email1
+install_mailbox email1 ya29-old-access "2026-09-28T12:02:00Z"
+queue_curl '{"access_token":"ya29-app-access","expires_in":3600,"token_type":"Bearer"}'
+run inject "box-name" >/dev/null 2>"$IO_DIR/err"
+app_body="$(cat "$IO_DIR/curl_stdin.0")"
+[[ "$app_body" == *'gmail.readonly'* ]] || fail "inject missing readonly"
+[[ "$app_body" == *'gmail.labels'* ]] || fail "inject missing labels"
+[[ "$app_body" == *'gmail.settings.basic'* ]] || fail "inject missing settings.basic"
+[[ "$app_body" != *'gmail.modify'* ]] || fail "inject requested modify"
+python3 -c '
+import json, sys
+obj = json.loads(sys.argv[1])
+assert obj["token"] == "ya29-app-access", obj["token"]
+assert obj["expiry"] == "2026-09-28T13:00:00Z", obj["expiry"]
+' "$(sec_get token/email1)"
+[[ "$(cat "$IO_DIR/docker_stdin.0")" == *'ya29-app-access'* ]] || fail "inject did not pass the new token"
+
 legacy="$ROOT/.creds"
 if [[ -e "$legacy" ]]; then
   fail "repo .creds already exists"
@@ -311,6 +331,7 @@ printf '%s' "$SECRET_SENTINEL" >"$legacy/client.json"
 printf '%s' "$REFRESH_SENTINEL" >"$legacy/token-email1.json"
 reset_io email1
 install_mailbox email1 ya29-still-good "2026-09-28T12:10:00Z"
+queue_curl '{"access_token":"ya29-readonly-clear","expires_in":3600,"token_type":"Bearer"}'
 clear_out="$(run one-shot 2>&1)"
 [[ ! -e "$legacy/client.json" && ! -e "$legacy/token-email1.json" ]] || fail "legacy credential files remain"
 assert_no_secret_output "$clear_out"

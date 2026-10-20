@@ -1,7 +1,7 @@
 ---
 title: "Adopt Gmail API + OAuth gmail.readonly + Python clients"
 date: 2026-09-25
-last_updated: 2026-09-25
+last_updated: 2026-10-20
 category: tooling-decisions
 module: mail-access
 problem_type: tooling_decision
@@ -33,7 +33,8 @@ A project-grounded verdict (**Adopt**, tier 3 privacy) confirmed the API stack. 
 **Use:**
 
 - Gmail API + OAuth Desktop client
-- Scope only `https://www.googleapis.com/auth/gmail.readonly`
+- App login and `inject`: `gmail.readonly`, `gmail.labels`, and `gmail.settings.basic`. Not `gmail.modify`. See `docs/solutions/security-decisions/2026-10-20-no-gmail-modify.md`
+- Morning `one-shot`: `https://www.googleapis.com/auth/gmail.readonly` only
 - Official Python libs: `google-api-python-client`, `google-auth`, `google-auth-httplib2`, `google-auth-oauthlib`
 - Store OAuth client + one refresh token per mailbox in **macOS Keychain** (generic password items)
 - **No biometrics / user-presence ACL** — launchd can read items for morning cron
@@ -69,6 +70,7 @@ Cloud project → enable Gmail API → OAuth Desktop client
 
 ## Related
 
+- `docs/solutions/security-decisions/2026-10-20-no-gmail-modify.md` — why `gmail.modify` stays off
 - `AGENTS.md` — stack table (source of short truth)
 - `docs/dev.md` — Dev Container / host Keychain
 - `README.md` — stack decided / v1 non-goals
