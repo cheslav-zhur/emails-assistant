@@ -18,7 +18,7 @@ Personal Python Dev Container standard (image, pip cache, ssh-agent): see `~/pro
 
 ### What this repo uses
 
-- Image: `Dockerfile` target `app`, from `mcr.microsoft.com/devcontainers/python:3.12-bookworm`. It installs the `app` extra with `uv sync --frozen` from `uv.lock` into the system Python. `postCreateCommand` still installs this package editable from the mounted workspace.
+- Image: `Dockerfile` target `dev` for this container. The morning build stays `docker build --target app`. Both start from `mcr.microsoft.com/devcontainers/python:3.12-bookworm`. Target `app` installs the `app` extra with `uv sync --frozen` from `uv.lock` into the system Python. Target `dev` adds the Debian bookworm `shellcheck` package on top of `app`. `postCreateCommand` still installs this package editable from the mounted workspace.
 - `TZ`: `Asia/Ho_Chi_Minh` (logs / local scheduling; Gmail API queries usually use relative/`newer_than` or UTC)
 - uv cache: named volume → `/home/vscode/.cache/uv`
 - `postCreateCommand`: `chown` that cache path, then `uv sync --frozen --inexact --extra app --extra login --extra dev`
@@ -33,7 +33,7 @@ Opening the Dev Container is an explicit go-ahead for that `postCreate` install 
 - GitHub CLI / `GH_TOKEN`
 - Claude Code mounts/features
 - Compose
-- Editor formatters or linters beyond Pylance. CLI checks are Ruff and Pyright from the `dev` extra.
+- Editor formatters or linters beyond Pylance.
 
 ### Host vs container (auth)
 
@@ -117,7 +117,7 @@ shellcheck src/host/*/*.sh
 for test in src/host/*/*.test.sh; do bash "$test"; done
 ```
 
-`ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only. `shellcheck` is the binary on the GitHub Ubuntu runner. The Dev Container does not install it.
+`ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only. `shellcheck` in this container is the Debian bookworm package from the `dev` image target. CI calls the binary already on the Ubuntu runner.
 
 ## Env
 

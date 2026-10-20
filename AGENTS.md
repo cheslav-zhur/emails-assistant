@@ -43,7 +43,7 @@ src/host/                 # Mac host: Keychain, inject, LaunchAgent
 pyproject.toml
 uv.lock
 .devcontainer/            # see docs/dev.md
-Dockerfile                # `app` and `login` image targets
+Dockerfile                # `app` and `login` image targets; `dev` adds shellcheck
 docs/dev.md
 docs/solutions/
 ```

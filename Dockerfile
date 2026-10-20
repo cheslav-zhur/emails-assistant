@@ -15,3 +15,10 @@ RUN UV_NO_CACHE=1 uv sync --frozen --no-dev --extra login --no-editable --inexac
 
 FROM source AS app
 RUN UV_NO_CACHE=1 uv sync --frozen --no-dev --extra app --no-editable --inexact
+
+FROM app AS dev
+USER root
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends shellcheck \
+    && rm -rf /var/lib/apt/lists/*
+USER vscode

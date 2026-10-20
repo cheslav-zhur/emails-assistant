@@ -21,6 +21,7 @@ Finished work stays in git. Do not copy it back here from an old plan.
 - **Gemini key in `keys/`.** One gitignored service-account JSON, mounted read-only into the morning container. Kept for now instead of a Keychain item `gemini-caller` or a bearer minted on the Mac. `AGENTS.md`, `docs/plans/2026-09-28-003-feat-mail-summary-plan.md`.
 - **Mac checks for launchd, Docker, and the banner.** `docs/plans/2026-09-28-002-feat-local-morning-digest-plan.md`.
 - **Old Application Support digests.** The day file now lives in `digests/`. No import of the old files. `docs/plans/2026-09-28-003-feat-mail-summary-plan.md`.
+- **`shellcheck` when `ubuntu-latest` moves.** In November 2026 the GitHub label moves to Ubuntu 26.04. That image lists `shellcheck` 0.11.0-2. Today's `ubuntu-latest` (Ubuntu 24.04) has 0.9.0-1, and CI calls that binary with no install step. The Dev Container target `dev` installs Debian bookworm's `shellcheck`, which stays on the older package. New warnings can fail CI while the container does not. [actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748), Ubuntu 24.04 and 26.04 runner readmes.
 
 ## Closed
 

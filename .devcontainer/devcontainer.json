@@ -3,7 +3,7 @@
   "build": {
     "dockerfile": "../Dockerfile",
     "context": "..",
-    "target": "app"
+    "target": "dev"
   },
   "containerEnv": {
     "TZ": "Asia/Ho_Chi_Minh",
