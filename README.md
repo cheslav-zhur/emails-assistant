@@ -40,5 +40,5 @@ flowchart LR
 ## Docs
 
 - [Plans](docs/plans/)
-- [Todo](docs/todo.md)
+- [Backlog](docs/backlog.md)
 - [Development](docs/dev.md)
