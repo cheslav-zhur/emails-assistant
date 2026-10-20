@@ -28,9 +28,13 @@ build/
 .DS_Store
 .idea/
 .vscode/
+.cursor/rules/
 
 # morning day files (mail text stays out of git)
 digests/
+
+# local mail notes (not for git)
+private/
 
 # local worktrees
 .worktrees/
