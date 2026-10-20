@@ -29,7 +29,7 @@ Login for one mailbox starts on the Mac and runs in a one-shot container. The Ma
 
 ### Problem Frame
 
-Google rejected the `email1` refresh token, so the owner had to sign in again. Consent starts inside the open Dev Container, while the browser is on the Mac. The browser opens a localhost address that nothing on the Mac is listening on, and the connection is refused. That Dev Container does not publish the consent port. A Testing-status OAuth client expires refresh tokens about every seven days, so this login will recur.
+Google rejected the `email1` refresh token, so the owner had to sign in again. Consent then started inside the open Dev Container, while the browser was on the Mac. The browser opened a localhost address that nothing on the Mac was listening on, and the connection was refused. That Dev Container did not publish the consent port. A Testing-status OAuth client expires refresh tokens about every seven days, so this login will recur.
 
 ### Key Decisions
 
@@ -145,11 +145,11 @@ sequenceDiagram
 - The login attempt already waiting inside the current Dev Container. That attempt is the old path.
 - Digest text, search, message display, and the morning file format.
 
-**Next change.** Split the images as in `docs/plans/2026-10-19-split-images-note.md`. `docs/dev.md` keeps the current `emails-assistant:daily` instructions until that change updates the code and those instructions together.
+The image split in `docs/plans/2026-10-19-split-images-note.md` has landed. Login uses `emails-assistant:login`. The morning job uses `emails-assistant:app`. Host scripts live under `src/host/`. That split does not change the requirements above. `docs/dev.md` describes `src/host/access-token/access-token.sh login <alias>`.
 
 **Deferred to Follow-Up Work**
 
-- Split `scripts/macos-access-token.sh`: refresh and `inject` apart from login, and move the embedded `HOST_PY` into `scripts/host_refresh.py`.
+- Move the embedded `HOST_PY` out of `src/host/access-token/access-token.sh`. Refresh and `inject` stay on that curl path.
 
 ### Dependencies / Assumptions
 
@@ -162,4 +162,4 @@ sequenceDiagram
 
 - [OAuth 2.0 for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app). Google's recommended redirect for a macOS app is a loopback address on the machine where the system browser runs.
 - `docs/plans/2026-09-28-001-feat-access-token-handoff-plan.md`. Consent runs in the container, and the plan leaves the missed Mac redirect for later.
-- `docs/dev.md`. Current login instructions tell the owner to pass a container name.
+- `docs/dev.md`. Login is `src/host/access-token/access-token.sh login <alias>`. The owner does not pass a container name.
