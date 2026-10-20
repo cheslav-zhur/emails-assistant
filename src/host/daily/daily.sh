@@ -57,18 +57,18 @@ image_stamp() {
   printf '%s' "$HOME/Library/Application Support/emails-assistant/${TARGET}-image.sha256"
 }
 
-pyproject_hash() {
+deps_hash() {
   if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$ROOT/pyproject.toml" | awk '{print $1}'
+    cat "$ROOT/pyproject.toml" "$ROOT/uv.lock" | shasum -a 256 | awk '{print $1}'
     return
   fi
-  sha256sum "$ROOT/pyproject.toml" | awk '{print $1}'
+  cat "$ROOT/pyproject.toml" "$ROOT/uv.lock" | sha256sum | awk '{print $1}'
 }
 
 ensure_image() {
   local stamp hash
   stamp="$(image_stamp)"
-  hash="$(pyproject_hash)"
+  hash="$(deps_hash)"
   if docker_cmd image inspect "$IMAGE" >/dev/null 2>&1 \
     && [[ -f "$stamp" ]] \
     && [[ "$(cat "$stamp")" == "$hash" ]]; then

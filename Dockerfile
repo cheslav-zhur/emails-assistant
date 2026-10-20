@@ -1,11 +1,17 @@
 FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm AS source
 
+COPY --from=ghcr.io/astral-sh/uv:0.13.3 /uv /uvx /bin/
+
 WORKDIR /workspaces/emails-assistant
-COPY pyproject.toml README.md ./
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
 FROM source AS login
-RUN pip install --no-cache-dir ".[login]"
+RUN UV_NO_CACHE=1 uv sync --frozen --no-dev --extra login --no-editable --inexact
 
 FROM source AS app
-RUN pip install --no-cache-dir ".[app]"
+RUN UV_NO_CACHE=1 uv sync --frozen --no-dev --extra app --no-editable --inexact

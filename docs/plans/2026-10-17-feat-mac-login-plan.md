@@ -149,7 +149,6 @@ sequenceDiagram
 
 **Deferred to Follow-Up Work**
 
-- A `uv` lockfile. Direct pins stay in `pyproject.toml` until then.
 - Split `scripts/macos-access-token.sh`: refresh and `inject` apart from login, and move the embedded `HOST_PY` into `scripts/host_refresh.py`.
 
 ### Dependencies / Assumptions

@@ -14,7 +14,7 @@
   },
   "mounts": [
     "source=/run/host-services/ssh-auth.sock,target=/ssh-agent,type=bind",
-    "source=emails-assistant-pip-cache,target=/home/vscode/.cache/pip,type=volume"
+    "source=emails-assistant-uv-cache,target=/home/vscode/.cache/uv,type=volume"
   ],
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
@@ -33,6 +33,6 @@
       }
     }
   },
-  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/pip && pip install -e \".[app,login,dev]\"",
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/uv && uv sync --frozen --inexact --extra app --extra login --extra dev",
   "remoteUser": "vscode"
 }

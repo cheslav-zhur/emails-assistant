@@ -17,7 +17,7 @@ The old tag `emails-assistant:daily` goes away. `src/host/macos-daily.sh` builds
 
 ## Dependencies
 
-Pins live once in `pyproject.toml`. `requirements.txt` is removed. This note names the package, not the version.
+Pins live once in `pyproject.toml`. `uv.lock` locks the resolved tree, including transitive packages. Direct pins stay in `pyproject.toml`. `requirements.txt` is removed. This note names the package, not the version.
 
 - In `dependencies`, both images: `google-auth`
 - Extra `app`: `google-api-python-client`, `google-auth-httplib2`, `python-dotenv`, `google-genai`
@@ -64,11 +64,10 @@ The morning container mounts `src/emails_assistant/`, `src/shared.py`, `keys/` r
 
 The Dev Container still opens the whole repo. It is the editor.
 
-A Python edit in a mounted file shows up without a rebuild. Rebuild when `pyproject.toml` changes. Each tag keeps its own stamp, and both stamps hash that file. Those stamps follow `pyproject.toml` instead of `requirements.txt`.
+A Python edit in a mounted file shows up without a rebuild. Rebuild when `pyproject.toml` or `uv.lock` changes. Each tag keeps its own stamp, and both stamps hash those two files.
 
 `docs/dev.md` and `AGENTS.md` name `emails-assistant:app`, `emails-assistant:login`, and `src/host/`.
 
 ## Not this change
 
-- A `uv` lockfile. Direct pins stay in `pyproject.toml`.
 - Splitting the Mac token script, and moving the embedded `HOST_PY` to `src/host/host_refresh.py`.

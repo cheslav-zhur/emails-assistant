@@ -182,14 +182,14 @@ run_agent
 [[ ! -s "$IO_DIR/banners" ]] || fail "second banner"
 [[ ! -s "$IO_DIR/shots" ]] || fail "second one-shot"
 
-# Image already matches pyproject.toml: do not build again.
+# Image already matches pyproject.toml and uv.lock: do not build again.
 reset_io "2026-09-29 10:30:00"
 arm_success
 : >"$IO_DIR/image_ready"
 if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "$ROOT/pyproject.toml" | awk '{print $1}' >"$IO_DIR/stamp"
+  cat "$ROOT/pyproject.toml" "$ROOT/uv.lock" | shasum -a 256 | awk '{print $1}' >"$IO_DIR/stamp"
 else
-  sha256sum "$ROOT/pyproject.toml" | awk '{print $1}' >"$IO_DIR/stamp"
+  cat "$ROOT/pyproject.toml" "$ROOT/uv.lock" | sha256sum | awk '{print $1}' >"$IO_DIR/stamp"
 fi
 run_agent
 [[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 0 ]] || fail "rebuilt a current image"
