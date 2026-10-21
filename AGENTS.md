@@ -25,7 +25,7 @@
 | Deps | direct pins in `pyproject.toml`, locked in `uv.lock` |
 | Runtime | Dev Container for interactive use; LaunchAgent runs `docker run --rm` for the morning file |
 
-**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail as a mail client, `gws`, more plaintext credential files, new frameworks, DB. The Gemini service account in `keys/` is the current exception. The LaunchAgent banner already uses `osascript` for a notification; do not grow that into a mail path.
+**Do not introduce** without explicit ask: IMAP/App Passwords, Apple Mail as a mail client, `gws`, more plaintext credential files, new frameworks, DB. The Gemini service account in `keys/` is the current exception. The LaunchAgent banner uses `terminal-notifier` and opens the digests folder on click. Do not grow that into a mail path.
 
 ## Sources of truth
 

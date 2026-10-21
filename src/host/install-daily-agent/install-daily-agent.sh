@@ -34,6 +34,10 @@ if path not in pathlib.Path(dst).read_text(encoding="utf-8"):
     raise SystemExit("installed plist is missing the script path")
 ' "$SRC" "$DEST" "$ROOT"
 
+if ! command -v terminal-notifier >/dev/null 2>&1; then
+  echo "terminal-notifier is not installed. A banner click cannot open the day directory until it is." >&2
+fi
+
 # A second run replaces the already loaded agent. bootout fails when it is not loaded.
 launchctl_cmd bootout "$DOMAIN" "$DEST" || true
 launchctl_cmd bootstrap "$DOMAIN" "$DEST"
