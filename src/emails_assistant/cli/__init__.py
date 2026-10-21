@@ -131,12 +131,16 @@ def _daily_fail() -> NoReturn:
     raise SystemExit(1)
 
 
-def _run_daily() -> None:
-    """Read both mailboxes, then write today's file and print only the count."""
-    aliases = known_aliases()
-    for alias in aliases:
-        resolve_alias(alias)
-    lines = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+def _stdin_lines() -> list[str]:
+    """Morning handoff lines. A terminal or an empty pipe means use injected files."""
+    if sys.stdin.isatty():
+        return []
+    return [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+
+
+def _credentials_from_stdin(
+    aliases: tuple[str, ...], lines: list[str]
+) -> list[Credentials]:
     if len(lines) != len(aliases):
         _daily_fail()
     payloads: list[dict[str, object]] = []
@@ -149,9 +153,21 @@ def _run_daily() -> None:
             _daily_fail()
         payloads.append(payload)
     try:
-        credentials = [load_access_credentials(payload) for payload in payloads]
+        return [load_access_credentials(payload) for payload in payloads]
     except CredentialError:
         _daily_fail()
+
+
+def _run_daily() -> None:
+    """Read both mailboxes, then write today's file and print only the count."""
+    aliases = known_aliases()
+    for alias in aliases:
+        resolve_alias(alias)
+    lines = _stdin_lines()
+    if lines:
+        credentials = _credentials_from_stdin(aliases, lines)
+    else:
+        credentials = [_mail_credentials(alias) for alias in aliases]
 
     now = _daily_now()
     directory = resolve_daily_dir()
@@ -163,8 +179,9 @@ def _run_daily() -> None:
     if preview.path.is_file():
         return
 
-    for alias, line in zip(aliases, lines, strict=True):
-        write_access_token_file(alias, line)
+    if lines:
+        for alias, line in zip(aliases, lines, strict=True):
+            write_access_token_file(alias, line)
 
     epoch = int(preview.window_start.timestamp())
     query = f"after:{epoch}"

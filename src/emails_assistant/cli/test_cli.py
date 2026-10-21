@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 from google.auth import _helpers
 
+from emails_assistant.auth import ACCESS_RERUN_NOTICE
 from emails_assistant.cli import main
 from emails_assistant.gmail_api import MessageSummary
 
@@ -51,13 +52,18 @@ def _stdin(*payloads: dict[str, object]) -> str:
     return "\n".join(_line(payload) for payload in payloads)
 
 
-def _run(argv: list[str], *, stdin: str = "") -> tuple[object, str, str]:
+def _run(
+    argv: list[str], *, stdin: str = "", tty: bool = False
+) -> tuple[object, str, str]:
     stdout = StringIO()
     stderr = StringIO()
+    stream = StringIO(stdin)
+    if tty:
+        stream.isatty = lambda: True  # type: ignore[method-assign]
     with (
         patch("sys.stdout", stdout),
         patch("sys.stderr", stderr),
-        patch("sys.stdin", StringIO(stdin)),
+        patch("sys.stdin", stream),
         patch("emails_assistant.cli._daily_now", return_value=_NOW),
     ):
         try:
@@ -328,7 +334,7 @@ def test_daily_sends_body_or_snippet_and_not_the_message_id(daily_dir: Path) -> 
     assert "Date: Tue, 29 Sep 2026 10:00:00 +0000" in contents
     assert hidden not in contents
     assert snippet_id not in contents
-    assert contents.count("about 4 to 10 sentences") == 2
+    assert contents.count("Write the morning file in Russian.") == 2
     assert "has-body" not in day
     assert "Saved." in day
     assert _TOKEN not in contents
@@ -449,7 +455,70 @@ def test_payload_count_must_match_aliases(daily_dir: Path, access_dir: Path) -> 
     assert not list(access_dir.glob("access-*.json"))
 
 
-def test_one_mailbox_name_is_enough(daily_dir: Path) -> None:
+def _write_access(directory: Path, alias: str, token: str) -> None:
+    path = directory / f"access-{alias}.json"
+    path.write_text(_line(_payload(token)), encoding="utf-8")
+
+
+def test_empty_stdin_reads_injected_access_files(
+    daily_dir: Path, access_dir: Path
+) -> None:
+    _write_access(access_dir, "email1", _TOKEN)
+    _write_access(access_dir, "email2", _TOKEN_2)
+    _boxes, patched = _install_mailboxes(_Messages(["a"]), _Messages(["b"]))
+    summary = "Сводка из внедрённых файлов."
+    client = _Client([_stop(summary)])
+
+    with (
+        patched,
+        patch("emails_assistant.summary._enterprise_client", return_value=client),
+    ):
+        code, out, err = _run(["daily"], stdin="")
+
+    text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
+    assert code == 0, err
+    assert out.strip() == "2"
+    assert summary in text
+    assert _TOKEN not in text
+
+
+def test_a_terminal_uses_injected_files_and_leaves_stdin(
+    daily_dir: Path, access_dir: Path
+) -> None:
+    _write_access(access_dir, "email1", _TOKEN)
+    _write_access(access_dir, "email2", _TOKEN_2)
+    _boxes, patched = _install_mailboxes(_Messages(["a"]), _Messages([]))
+    client = _Client([_stop("С терминала.")])
+    unread = _line(_payload("ya29-unread", refresh_token=_REFRESH))
+
+    with (
+        patched,
+        patch("emails_assistant.summary._enterprise_client", return_value=client),
+    ):
+        code, out, err = _run(["daily"], stdin=unread, tty=True)
+
+    text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
+    assert code == 0, err
+    assert out.strip() == "1"
+    assert "С терминала." in text
+    assert _REFRESH not in text
+    assert "ya29-unread" not in text
+    stored = (access_dir / "access-email1.json").read_text(encoding="utf-8")
+    assert _TOKEN in stored
+    assert _REFRESH not in stored
+
+
+def test_empty_stdin_without_access_files_asks_for_the_host_script(
+    daily_dir: Path,
+) -> None:
+    code, out, err = _run(["daily"], stdin="")
+
+    assert ACCESS_RERUN_NOTICE in f"{code}\n{out}\n{err}"
+    assert _FAILURE not in out
+    assert not (daily_dir / "2026-09-29.txt").exists()
+
+
+def test_count_names_both_mailboxes(daily_dir: Path) -> None:
     first = _Messages(["a"])
     second = _Messages(["b"])
     _boxes, patched = _install_mailboxes(first, second)
@@ -468,8 +537,8 @@ def test_one_mailbox_name_is_enough(daily_dir: Path) -> None:
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
     assert out.strip() == "2"
+    assert "2 письма\nemail1: 1\nemail2: 1\n" in text
     assert summary in text
-    assert "email2" not in text
 
 
 @pytest.mark.parametrize(

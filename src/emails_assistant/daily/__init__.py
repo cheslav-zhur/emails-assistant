@@ -64,8 +64,9 @@ def decide_daily(
     """Return whether to write today's file, its text, and a count-only notice.
 
     ``summary=None`` keeps the message list. A non-blank summary replaces that
-    list and is not checked for length. A blank summary with new mail writes
-    nothing. No new mail still writes the quiet file and ignores ``summary``.
+    list, is not checked for length, and is preceded by a Russian count of the
+    window. A blank summary with new mail writes nothing. No new mail still
+    writes the quiet file and ignores ``summary``.
     """
     day_path = daily_dir / f"{now.date().isoformat()}.txt"
     start = _window_start(daily_dir, day_path, now)
@@ -118,7 +119,7 @@ def decide_daily(
         )
     return DailyDecision(
         write=True,
-        text=_format_summary(day=day_path.stem, summary=text),
+        text=_format_summary(day=day_path.stem, summary=text, sections=kept_sections),
         count=total,
         notice=str(total),
         window_start=start,
@@ -194,8 +195,36 @@ def _format_daily(
     return "\n".join(header + body).rstrip() + "\n"
 
 
-def _format_summary(*, day: str, summary: str) -> str:
-    return f"# emails-assistant daily digest — {day}\n\n{summary}\n"
+def _letter_word(count: int) -> str:
+    mod100 = count % 100
+    mod10 = count % 10
+    if 11 <= mod100 <= 14:
+        return "писем"
+    if mod10 == 1:
+        return "письмо"
+    if 2 <= mod10 <= 4:
+        return "письма"
+    return "писем"
+
+
+def _count_block(sections: Sequence[tuple[str, tuple[DailyMessage, ...]]]) -> str:
+    total = sum(len(messages) for _, messages in sections)
+    lines = [f"{total} {_letter_word(total)}"]
+    lines.extend(f"{alias}: {len(messages)}" for alias, messages in sections)
+    return "\n".join(lines)
+
+
+def _format_summary(
+    *,
+    day: str,
+    summary: str,
+    sections: Sequence[tuple[str, tuple[DailyMessage, ...]]],
+) -> str:
+    return (
+        f"# emails-assistant daily digest — {day}\n\n"
+        f"{_count_block(sections)}\n\n"
+        f"{summary}\n"
+    )
 
 
 def _format_section(alias: str, messages: tuple[DailyMessage, ...]) -> str:

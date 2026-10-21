@@ -90,7 +90,7 @@ Inside the container, after `inject`. Mail commands read `/dev/shm/emails-assist
 | `emails-assistant search ALIAS QUERY [--max N]` | Gmail query, one mailbox (default 20) |
 | `emails-assistant show ALIAS MESSAGE_ID` | Headers and plain body of one message |
 | `emails-assistant smoke ALIAS` | List one message as a sanity check |
-| `emails-assistant daily` | Read both mailboxes from stdin JSON lines, write today's file, print the count |
+| `emails-assistant daily` | Write today's file and print the count. Piped JSON lines are the morning handoff. An empty stdin reads the injected access files |
 
 On the Mac (`src/host/access-token/access-token.sh`):
 

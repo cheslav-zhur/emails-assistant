@@ -11,13 +11,35 @@ logger = logging.getLogger(__name__)
 
 MODEL = "gemini-3.8-flash"
 LOCATION = "global"
-_HTTP_TIMEOUT_MS = 180_000
+_HTTP_TIMEOUT_MS = 300_000
 _SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 _INSTRUCTION = (
-    "Summarize what is important across both mailboxes as one pool, "
-    "in about 4 to 10 sentences. "
-    "Leave out a mailbox when nothing in it is important. "
-    "Do not list the messages."
+    "Write the morning file in Russian. "
+    "Treat both mailboxes as one pool. "
+    "Do not count the messages and do not list them one by one. "
+    "Do not give advice and do not invent dates. "
+    "Write a date as day and month only, with no year, like 27 окт. "
+    "Start with the heading Важное when something needs attention. "
+    "Under it, write two to four paragraphs. "
+    "Each paragraph is a short topic name, then exactly two sentences. "
+    "The second sentence adds one new fact and does not restate the first. "
+    "Do not mention a precaution or what the owner should do. "
+    "After that, the heading Остальное and only these lines, in this order, "
+    "skipping a line when that group is empty. "
+    'Each line starts with "- ". '
+    "Career: one sentence on job alerts, applications, and recruiter mail. "
+    "Name no cities, countries, or roles. "
+    "Finance: one sentence naming the date, who charged, and the amount. "
+    "Leave marketing out of Finance. "
+    "Events: up to three soonest meetups, webinars, or conferences, "
+    "each with its date from the mail. "
+    "A show, a session, an evening, a sale, or a ticket offer "
+    "is Рассылки, not Events. "
+    "Travel: one sentence only for a real trip, not fare ads. "
+    "Рассылки: one short last sentence for newsletters and promotions. "
+    "Name no brands, topics, or products. "
+    "Omit Важное when nothing is important. "
+    "Omit Остальное when every group is empty."
 )
 
 

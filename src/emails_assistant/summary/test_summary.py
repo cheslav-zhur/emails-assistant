@@ -51,7 +51,7 @@ class _Client:
         self.models = _Models(response)
 
 
-def test_stop_text_drops_thoughts_and_repeats_the_band() -> None:
+def test_stop_text_drops_thoughts_and_repeats_the_instruction() -> None:
     client = _Client(
         _Response(
             _Reason("STOP"),
@@ -64,9 +64,10 @@ def test_stop_text_drops_thoughts_and_repeats_the_band() -> None:
     contents = client.models.calls[0]["contents"]
     assert text == "Visible sentence."
     assert client.models.calls[0]["model"] == MODEL == "gemini-3.8-flash"
-    assert contents.count("about 4 to 10 sentences") == 2
-    assert contents.startswith("Summarize what is important")
-    assert contents.endswith("Do not list the messages.")
+    assert contents.count("Write the morning file in Russian.") == 2
+    assert contents.count("is Рассылки, not Events.") == 2
+    assert contents.startswith("Write the morning file in Russian.")
+    assert contents.endswith("Omit Остальное when every group is empty.")
     assert "Subject: hi" in contents
     assert "hidden thought" not in text
 
@@ -152,7 +153,7 @@ def test_enterprise_client_uses_the_service_account_file(
     assert seen["project"] == "proj-1"
     assert seen["location"] == "global"
     assert seen["credentials"] is creds
-    assert seen["http_options"] == {"timeout": 180_000}
+    assert seen["http_options"] == {"timeout": 300_000}
     assert "api_key" not in seen
     assert text == "Ok."
     assert "not-a-real-key" not in caplog.text

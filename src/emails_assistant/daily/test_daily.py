@@ -214,12 +214,50 @@ def test_summary_replaces_the_list_and_keeps_the_count(tmp_path: Path) -> None:
     assert decision.count == 5
     assert decision.notice == "5"
     assert decision.failure is None
+    assert "5 писем\nemail1: 2\nemail2: 3\n" in decision.text
     assert summary in decision.text
     assert "one-0" not in decision.text
     assert "two-2" not in decision.text
     assert "From:" not in decision.text
     for message in first + second:
         assert message.subject not in (decision.notice or "")
+
+
+def test_summary_count_uses_the_window_and_russian_plurals(tmp_path: Path) -> None:
+    modified = datetime(2026, 9, 28, 8, 10, tzinfo=UTC)
+    _prior(tmp_path, "2026-09-28.txt", modified)
+    outside = _msg(modified, "outside-subject")
+    inside = _msg(modified + timedelta(seconds=1), "inside-subject")
+
+    decision = decide_daily(
+        daily_dir=tmp_path,
+        now=_NOW,
+        mailboxes=_reads(("email1", (outside, inside)), ("email2", ())),
+        summary="Важное\n\nОдно письмо нужно открыть.",
+    )
+
+    assert "1 письмо\nemail1: 1\nemail2: 0\n" in decision.text
+    assert "outside-subject" not in decision.text
+    assert "inside-subject" not in decision.text
+
+    plurals = (
+        (2, 0, "2 письма\nemail1: 2\nemail2: 0"),
+        (4, 1, "5 писем\nemail1: 4\nemail2: 1"),
+        (11, 0, "11 писем\nemail1: 11\nemail2: 0"),
+        (21, 0, "21 письмо\nemail1: 21\nemail2: 0"),
+        (22, 0, "22 письма\nemail1: 22\nemail2: 0"),
+    )
+    for email1_count, email2_count, line in plurals:
+        decision = decide_daily(
+            daily_dir=tmp_path,
+            now=_NOW,
+            mailboxes=_reads(
+                ("email1", tuple(_msg(_NOW, f"e1-{i}") for i in range(email1_count))),
+                ("email2", tuple(_msg(_NOW, f"e2-{i}") for i in range(email2_count))),
+            ),
+            summary="Важное\n\nТекст.",
+        )
+        assert line in decision.text
 
 
 def test_summary_length_does_not_block_the_file(tmp_path: Path) -> None:
