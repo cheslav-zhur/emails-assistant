@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host daily agent with stubbed clock, one-shot, docker, and osascript.
+# Host daily agent with stubbed clock, one-shot, docker, and terminal-notifier.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -32,12 +32,35 @@ if [[ -x "$dir/after_sleep" ]]; then
 fi
 EOF
 
-cat >"$BIN/osascript-stub" <<'EOF'
+cat >"$BIN/notifier-stub" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 dir="${EMAILS_ASSISTANT_STUB_DIR:?}"
-printf '%s\n' "$1" >>"$dir/banners"
 printf '%s\n' "$*" >>"$dir/banner_args"
+message=""
+url=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -message)
+      message="${2:-}"
+      shift 2
+      ;;
+    -open)
+      url="${2:-}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+printf '%s\n' "$message" >>"$dir/banners"
+printf '%s\n' "$url" >>"$dir/banner_urls"
+EOF
+
+cat >"$BIN/notifier-fail" <<'EOF'
+#!/usr/bin/env bash
+exit 1
 EOF
 
 cat >"$BIN/oneshot-stub" <<'EOF'
@@ -96,7 +119,7 @@ if [[ -f "$dir/docker_exit" ]]; then
 fi
 EOF
 
-chmod +x "$BIN/date-stub" "$BIN/sleep-stub" "$BIN/osascript-stub" "$BIN/oneshot-stub" "$BIN/docker-stub"
+chmod +x "$BIN/date-stub" "$BIN/sleep-stub" "$BIN/notifier-stub" "$BIN/notifier-fail" "$BIN/oneshot-stub" "$BIN/docker-stub"
 
 reset_io() {
   IO_DIR="$(mktemp -d)"
@@ -104,6 +127,7 @@ reset_io() {
   : >"$IO_DIR/shots"
   : >"$IO_DIR/banners"
   : >"$IO_DIR/banner_args"
+  : >"$IO_DIR/banner_urls"
   : >"$IO_DIR/docker_cmds"
   : >"$IO_DIR/docker_args"
   : >"$IO_DIR/sleeps"
@@ -127,7 +151,7 @@ arm_success() {
 run_agent() {
   EMAILS_ASSISTANT_DATE="$BIN/date-stub" \
   EMAILS_ASSISTANT_SLEEP="$BIN/sleep-stub" \
-  EMAILS_ASSISTANT_OSASCRIPT="$BIN/osascript-stub" \
+  EMAILS_ASSISTANT_NOTIFIER="$BIN/notifier-stub" \
   EMAILS_ASSISTANT_ONE_SHOT="$BIN/oneshot-stub" \
   EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
   EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
@@ -137,12 +161,27 @@ run_agent() {
   "$SCRIPT"
 }
 
+folder_url_of() {
+  python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).as_uri())' "$1"
+}
+
+assert_banner_folder() {
+  local expected line
+  expected="$(folder_url_of "$1")"
+  [[ -s "$IO_DIR/banner_urls" ]] || fail "banner did not open a folder"
+  while IFS= read -r line; do
+    [[ "$line" == "$expected" ]] || fail "banner folder: $line"
+    [[ "$line" != *.txt ]] || fail "banner opened a file"
+  done <"$IO_DIR/banner_urls"
+}
+
 [[ -f "$SCRIPT" ]] || fail "missing $SCRIPT"
 [[ -f "$PLIST" ]] || fail "missing $PLIST"
 grep -n 'docker exec' "$SCRIPT" >/dev/null && fail "script docker execs the dev container"
-grep -n 'display notification' "$SCRIPT" >/dev/null || fail "missing display notification"
-if grep -n -E 'osascript .*open |display notification.*open' "$SCRIPT" >/dev/null; then
-  fail "notification opens a file"
+grep -n 'terminal-notifier' "$SCRIPT" >/dev/null || fail "missing terminal-notifier"
+grep -n -- '-open' "$SCRIPT" >/dev/null || fail "missing notification open"
+if grep -n 'display notification' "$SCRIPT" >/dev/null; then
+  fail "banner still uses display notification"
 fi
 
 grep -n '<key>Hour</key>' -A1 "$PLIST" | grep -q '<integer>8</integer>' || fail "plist hour"
@@ -165,6 +204,7 @@ run_agent
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "expected one one-shot"
 [[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 1 ]] || fail "missing image build"
 [[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "count banner: $(cat "$IO_DIR/banners")"
+assert_banner_folder "$DAY_DIR"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "host replaced the day file"
 [[ "$(cat "$IO_DIR/docker_stdin")" == *"access_token"* ]] || fail "token was not piped to docker"
 [[ "$(cat "$IO_DIR/docker_args")" != *"$TOKEN_1"* && "$(cat "$IO_DIR/docker_args")" != *"$TOKEN_2"* ]] || fail "token was a docker argument"
@@ -222,6 +262,7 @@ run_agent
 [[ "$(cat "$IO_DIR/banners")" != *"$SUBJECT"* && "$(cat "$IO_DIR/banners")" != *"someone"* ]] || fail "failure banner has mail"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "later try did not write the file"
 [[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "did not wait 15 minutes"
+assert_banner_folder "$DAY_DIR"
 
 # one-shot re-login: no container, no file, banner hides the token. A later try still writes.
 reset_io "2026-09-29 10:30:00"
@@ -258,7 +299,7 @@ rm -f "$ROOT/digests/2026-09-29.txt"
 printf '%s' "$ROOT/digests/2026-09-29.txt" >"$IO_DIR/write_path"
 EMAILS_ASSISTANT_DATE="$BIN/date-stub" \
 EMAILS_ASSISTANT_SLEEP="$BIN/sleep-stub" \
-EMAILS_ASSISTANT_OSASCRIPT="$BIN/osascript-stub" \
+EMAILS_ASSISTANT_NOTIFIER="$BIN/notifier-stub" \
 EMAILS_ASSISTANT_ONE_SHOT="$BIN/oneshot-stub" \
 EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
 EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
@@ -282,6 +323,7 @@ fi
 [[ "$(cat "$IO_DIR/docker_args")" != *"Application Support"* ]] || fail "day file still uses Application Support"
 [[ "$(cat "$IO_DIR/docker_args")" != *":/daily"* ]] || fail "default run still mounts /daily"
 [[ "$(cat "$ROOT/digests/2026-09-29.txt")" == "from-container" ]] || fail "default run did not write digests/"
+assert_banner_folder "$ROOT/digests"
 rm -f "$ROOT/digests/2026-09-29.txt"
 
 # Summary miss: one banner, a non-txt marker, the prior day file stays.
@@ -296,6 +338,7 @@ run_agent
 [[ "$(find "$DAY_DIR" -name '*.txt' -print | wc -l | tr -d ' ')" -eq 1 ]] || fail "miss added a txt"
 [[ "$(cat "$DAY_DIR/2026-09-28.txt")" == "prior-day" ]] || fail "miss changed the prior day file"
 [[ "$(cat "$IO_DIR/banners")" == "Summary did not run." ]] || fail "summary banner: $(cat "$IO_DIR/banners")"
+assert_banner_folder "$DAY_DIR"
 [[ "$(cat "$IO_DIR/banners")" != *"$SUBJECT"* ]] || fail "summary banner leaked"
 [[ ! -s "$IO_DIR/sleeps" ]] || fail "summary miss retried"
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "summary miss one-shot count"
@@ -349,5 +392,33 @@ run_agent
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second digest failure banner"
 [[ "$(sed -n '2p' "$IO_DIR/banners")" == "3" ]] || fail "later count after digest failure"
 [[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "digest failure did not wait 15 minutes"
+assert_banner_folder "$DAY_DIR"
+
+# A space in the day directory is encoded, and the click target stays that directory.
+reset_io "2026-09-29 10:30:00"
+rmdir "$DAY_DIR"
+DAY_DIR="${IO_DIR}/day files"
+mkdir -p "$DAY_DIR"
+arm_success
+run_agent
+assert_banner_folder "$DAY_DIR"
+[[ "$(cat "$IO_DIR/banner_urls")" == *'%20'* ]] || fail "space was not encoded"
+
+# The day file stays when the banner program fails.
+reset_io "2026-09-29 10:30:00"
+arm_success
+EMAILS_ASSISTANT_DATE="$BIN/date-stub" \
+EMAILS_ASSISTANT_SLEEP="$BIN/sleep-stub" \
+EMAILS_ASSISTANT_NOTIFIER="$BIN/notifier-fail" \
+EMAILS_ASSISTANT_ONE_SHOT="$BIN/oneshot-stub" \
+EMAILS_ASSISTANT_DOCKER="$BIN/docker-stub" \
+EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
+EMAILS_ASSISTANT_DAILY_DIR="$DAY_DIR" \
+EMAILS_ASSISTANT_IMAGE_STAMP="$IO_DIR/stamp" \
+EMAILS_ASSISTANT_ACCOUNTS=email1,email2 \
+"$SCRIPT"
+[[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "banner failure dropped the day file"
+[[ ! -s "$IO_DIR/banners" ]] || fail "failed notifier wrote a banner"
+[[ ! -s "$IO_DIR/sleeps" ]] || fail "banner failure retried a finished day"
 
 echo "ok"

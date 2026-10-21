@@ -117,16 +117,41 @@ sleep_15() {
   sleep 900
 }
 
+folder_url() {
+  local dir="$1"
+  local encoded="" byte hex
+  local LC_ALL=C
+  [[ "$dir" == /* ]] || dir="${PWD}/${dir}"
+  while IFS= read -r -n 1 byte || [[ -n "$byte" ]]; do
+    case "$byte" in
+      [A-Za-z0-9._~/-]) encoded="${encoded}${byte}" ;;
+      *)
+        hex="$(printf '%s' "$byte" | od -An -tu1 | awk '{printf "%02X", $1}')"
+        encoded="${encoded}%${hex}"
+        ;;
+    esac
+  done < <(printf '%s' "$dir")
+  printf 'file://%s' "$encoded"
+}
+
 notify() {
   local message="$1"
+  local dir url
   case "$message" in
     *[!0-9A-Za-z.\ ]*) return 1 ;;
   esac
-  if [[ -n "${EMAILS_ASSISTANT_OSASCRIPT:-}" ]]; then
-    "$EMAILS_ASSISTANT_OSASCRIPT" "$message"
+  dir="$(daily_dir)"
+  mkdir -p "$dir"
+  url="$(folder_url "$dir")"
+  if [[ -n "${EMAILS_ASSISTANT_NOTIFIER:-}" ]]; then
+    "$EMAILS_ASSISTANT_NOTIFIER" -title "emails-assistant" -message "$message" -open "$url"
     return
   fi
-  osascript -e "display notification \"$message\" with title \"emails-assistant\""
+  if ! command -v terminal-notifier >/dev/null 2>&1; then
+    echo "terminal-notifier is not installed." >&2
+    return 1
+  fi
+  terminal-notifier -title "emails-assistant" -message "$message" -open "$url"
 }
 
 run_container() {
@@ -179,12 +204,12 @@ try_once() {
   result="$(run_container "$payload")" || status=$?
   result="${result//$'\n'/}"
   if [[ "$status" -eq 0 && -f "$file" && "$result" =~ ^[0-9]+$ ]]; then
-    notify "$result"
+    notify "$result" || true
     return 0
   fi
   if [[ "$result" == "$SUMMARY_MISS" && ! -f "$file" ]]; then
     : >"$(miss_marker)"
-    notify "$SUMMARY_MISS"
+    notify "$SUMMARY_MISS" || true
     return 2
   fi
   return 1
@@ -208,8 +233,7 @@ main() {
     if [[ "$status" -eq 0 || "$status" -eq 2 ]]; then
       return 0
     fi
-    if ((notified == 0)); then
-      notify "$FAILURE"
+    if ((notified == 0)) && notify "$FAILURE"; then
       notified=1
     fi
     sleep_15
