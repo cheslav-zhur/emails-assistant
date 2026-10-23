@@ -1,6 +1,6 @@
 # Personal email assistant
 
-![CI](https://img.shields.io/github/actions/workflow/status/cheslav-zhur/emails-assistant/tests.yml?branch=main&label=CI)
+[![CI](https://img.shields.io/github/actions/workflow/status/cheslav-zhur/emails-assistant/tests.yml?branch=main&label=CI)](https://github.com/cheslav-zhur/emails-assistant/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
 ![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?logo=gmail&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
