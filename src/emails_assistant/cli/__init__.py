@@ -25,8 +25,10 @@ from emails_assistant.daily import (
     DailyMessage,
     MailboxRead,
     decide_daily,
+    record_summary_miss,
     render_summary_input,
     resolve_daily_dir,
+    summary_miss_path,
 )
 from emails_assistant.digest import format_digest, format_search, format_show
 from emails_assistant.gmail_api import (
@@ -210,20 +212,25 @@ def _run_daily() -> None:
     except Exception:  # noqa: BLE001  mailbox failure stays the stable daily failure
         _daily_fail()
 
-    from emails_assistant.summary import gemini_key_path, summarize
+    from emails_assistant.summary import Summary, gemini_key_path, summarize
 
     mail_text = render_summary_input(tuple(reads), window_start=preview.window_start)
     key = gemini_key_path()
+    outcome: Summary | None
     if not mail_text:
-        summary: str | None = None
+        outcome = None
     elif key is None:
-        summary = ""
+        outcome = Summary("", "no-key")
     else:
-        summary = summarize(mail_text, key_path=key)
+        outcome = summarize(mail_text, key_path=key)
+    summary = None if outcome is None else outcome.text
     decision = decide_daily(
         daily_dir=directory, now=now, mailboxes=reads, summary=summary
     )
     if decision.failure:
+        record_summary_miss(
+            decision.path, "" if outcome is None else (outcome.miss or "")
+        )
         print(decision.failure)
         raise SystemExit(1)
     if not decision.write or decision.notice is None:
@@ -237,6 +244,7 @@ def _run_daily() -> None:
         os.write(fd, decision.text.encode("utf-8"))
     finally:
         os.close(fd)
+    summary_miss_path(decision.path).unlink(missing_ok=True)
     print(decision.notice)
 
 

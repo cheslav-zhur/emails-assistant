@@ -617,20 +617,23 @@ def test_mail_without_a_key_writes_no_file(
     assert _SUBJECT not in f"{out}\n{err}"
     assert _KEY_SECRET not in f"{out}\n{err}"
     assert not (daily_dir / "2026-09-29.txt").exists()
+    assert (daily_dir / "2026-09-29.summary-miss").read_text(encoding="utf-8") == (
+        "no-key\n"
+    )
     assert built == []
 
 
 @pytest.mark.parametrize(
-    "response",
+    ("response", "reason"),
     [
-        _Response("SAFETY", [_Part(_SUBJECT)]),
-        _Response("MAX_TOKENS", [_Part("cut off")]),
-        _Response("STOP", [_Part("   ")]),
-        _Response("STOP", [_Part(_SUBJECT, thought=True)]),
+        (_Response("SAFETY", [_Part(_SUBJECT)]), "finish:SAFETY"),
+        (_Response("MAX_TOKENS", [_Part("cut off")]), "finish:MAX_TOKENS"),
+        (_Response("STOP", [_Part("   ")]), "empty"),
+        (_Response("STOP", [_Part(_SUBJECT, thought=True)]), "empty"),
     ],
 )
 def test_a_miss_writes_nothing_and_names_no_mail(
-    daily_dir: Path, response: _Response
+    daily_dir: Path, response: _Response, reason: str
 ) -> None:
     _boxes, patched = _install_mailboxes(
         _Messages(["a"], subjects={"a": _SUBJECT}), _Messages([])
@@ -652,6 +655,9 @@ def test_a_miss_writes_nothing_and_names_no_mail(
     assert _SUBJECT not in f"{out}\n{err}"
     assert _KEY_SECRET not in f"{out}\n{err}"
     assert not (daily_dir / "2026-09-29.txt").exists()
+    marker = (daily_dir / "2026-09-29.summary-miss").read_text(encoding="utf-8")
+    assert marker == f"{reason}\n"
+    assert _SUBJECT not in marker
 
 
 def test_a_miss_leaves_the_mail_in_the_next_summary(daily_dir: Path) -> None:
@@ -677,6 +683,9 @@ def test_a_miss_leaves_the_mail_in_the_next_summary(daily_dir: Path) -> None:
         assert out.strip() == _MISS
         assert subject not in out
         assert not (daily_dir / "2026-09-29.txt").exists()
+        assert (daily_dir / "2026-09-29.summary-miss").read_text(
+            encoding="utf-8"
+        ) == "finish:SAFETY\n"
         assert subject in client.models.calls[0]["contents"]
 
         code, out, err = _run(["daily"], stdin=stdin)
@@ -684,6 +693,7 @@ def test_a_miss_leaves_the_mail_in_the_next_summary(daily_dir: Path) -> None:
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
     assert out.strip() == "1"
+    assert not (daily_dir / "2026-09-29.summary-miss").exists()
     assert "Now it is summarized." in text
     assert subject not in text
     assert subject in client.models.calls[1]["contents"]

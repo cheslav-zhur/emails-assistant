@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -52,14 +54,36 @@ def _finish_reason(value: object) -> str:
     return str(raw).strip().upper()
 
 
-def _visible_summary(response: object) -> str:
-    """Non-thought text when the model finished with STOP, otherwise empty."""
+@dataclass(frozen=True)
+class Summary:
+    """Finished text, or an empty text with one marker reason."""
+
+    text: str
+    miss: str | None = None
+
+
+def _finish_miss(reason: str) -> str:
+    if re.fullmatch(r"[A-Z0-9_]+", reason):
+        return f"finish:{reason}"
+    return "finish:OTHER"
+
+
+def _request_miss(exc: BaseException) -> str:
+    line = f"request:{type(exc).__name__}"
+    if re.fullmatch(r"request:[A-Za-z_][A-Za-z0-9_]*", line) and len(line) <= 80:
+        return line
+    return "request:Error"
+
+
+def _summary_from_response(response: object) -> Summary:
+    """Non-thought text when the model finished with STOP, otherwise a miss."""
     candidates = getattr(response, "candidates", None) or ()
     if not candidates:
-        return ""
+        return Summary("", "empty")
     candidate = candidates[0]
-    if _finish_reason(getattr(candidate, "finish_reason", None)) != "STOP":
-        return ""
+    reason = _finish_reason(getattr(candidate, "finish_reason", None))
+    if reason != "STOP":
+        return Summary("", _finish_miss(reason))
     content = getattr(candidate, "content", None)
     parts = getattr(content, "parts", None) or ()
     chunks: list[str] = []
@@ -69,7 +93,10 @@ def _visible_summary(response: object) -> str:
         text = getattr(part, "text", None)
         if isinstance(text, str) and text:
             chunks.append(text)
-    return "".join(chunks).strip()
+    visible = "".join(chunks).strip()
+    if not visible:
+        return Summary("", "empty")
+    return Summary(visible)
 
 
 def _repo_root() -> Path:
@@ -113,25 +140,25 @@ def summarize(
     *,
     key_path: Path | None = None,
     client: Any | None = None,
-) -> str:
-    """Return the finished summary, or an empty string when Gemini does not."""
+) -> Summary:
+    """Return the finished summary, or a miss reason when Gemini does not."""
     active: Any
     if client is not None:
         active = client
     elif key_path is None:
-        return ""
+        return Summary("", "no-key")
     else:
         try:
             active = _enterprise_client(key_path)
         except Exception:  # noqa: BLE001  a bad key becomes an empty summary
             logger.error("Gemini credentials were rejected")
-            return ""
+            return Summary("", "credentials")
     try:
         response = active.models.generate_content(
             model=MODEL,
             contents=_prompt(mail_text),
         )
-    except Exception:  # noqa: BLE001  a Gemini miss becomes an empty summary
+    except Exception as exc:  # noqa: BLE001  a Gemini miss becomes an empty summary
         logger.error("Gemini did not return a summary")
-        return ""
-    return _visible_summary(response)
+        return Summary("", _request_miss(exc))
+    return _summary_from_response(response)

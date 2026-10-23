@@ -49,6 +49,18 @@ miss_marker() {
   printf '%s/%s.summary-miss' "$(daily_dir)" "$(day_stamp)"
 }
 
+# One reason line. Same set as record_summary_miss.
+miss_reason_ok() {
+  local marker="$1" line extra bytes
+  [[ -f "$marker" ]] || return 1
+  bytes="$(wc -c <"$marker" | tr -d '[:space:]')"
+  [[ "$bytes" -le 81 ]] || return 1
+  IFS= read -r line <"$marker" || return 1
+  [[ "$line" =~ ^(no-key|credentials|empty|request:[A-Za-z_][A-Za-z0-9_]*|finish:[A-Z0-9_]+)$ ]] || return 1
+  extra="$(tail -n +2 "$marker" || true)"
+  [[ -z "$extra" ]]
+}
+
 image_stamp() {
   if [[ -n "${EMAILS_ASSISTANT_IMAGE_STAMP:-}" ]]; then
     printf '%s' "$EMAILS_ASSISTANT_IMAGE_STAMP"
@@ -190,7 +202,7 @@ run_container() {
 }
 
 try_once() {
-  local payload result file
+  local payload result file marker
   if ! docker_cmd info >/dev/null 2>&1; then
     return 1
   fi
@@ -208,7 +220,10 @@ try_once() {
     return 0
   fi
   if [[ "$result" == "$SUMMARY_MISS" && ! -f "$file" ]]; then
-    : >"$(miss_marker)"
+    marker="$(miss_marker)"
+    if ! miss_reason_ok "$marker"; then
+      : >"$marker"
+    fi
     notify "$SUMMARY_MISS" || true
     return 2
   fi

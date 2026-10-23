@@ -367,6 +367,31 @@ run_agent
 [[ -f "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "next day removed yesterday's marker"
 [[ "$(cat "$DAY_DIR/2026-09-30.txt")" == "from-container" ]] || fail "next day wrote nothing"
 
+# A reason line from the container stays in the marker.
+reset_io "2026-09-29 10:30:00"
+payloads >"$IO_DIR/shot_stdout"
+printf '%s\n' "Summary did not run." >"$IO_DIR/docker_stdout"
+printf '1\n' >"$IO_DIR/docker_exit"
+printf '%s\n' "finish:SAFETY" >"$IO_DIR/write_body"
+printf '%s' "$DAY_DIR/2026-09-29.summary-miss" >"$IO_DIR/write_path"
+run_agent
+[[ "$(cat "$DAY_DIR/2026-09-29.summary-miss")" == "finish:SAFETY" ]] || fail "reason was dropped: $(cat "$DAY_DIR/2026-09-29.summary-miss")"
+[[ ! -e "$DAY_DIR/2026-09-29.txt" ]] || fail "reason run wrote a day file"
+[[ "$(cat "$IO_DIR/banners")" == "Summary did not run." ]] || fail "reason banner"
+
+# A marker that is not one reason line is emptied.
+reset_io "2026-09-29 10:30:00"
+payloads >"$IO_DIR/shot_stdout"
+printf '%s\n' "Summary did not run." >"$IO_DIR/docker_stdout"
+printf '1\n' >"$IO_DIR/docker_exit"
+printf '%s\n%s\n' "finish:SAFETY" "$SUBJECT" >"$IO_DIR/write_body"
+printf '%s' "$DAY_DIR/2026-09-29.summary-miss" >"$IO_DIR/write_path"
+run_agent
+[[ -f "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "unsafe marker was removed"
+[[ ! -s "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "unsafe marker was kept"
+[[ "$(cat "$DAY_DIR/2026-09-29.summary-miss")" != *"$SUBJECT"* ]] || fail "marker kept the subject"
+[[ "$(cat "$IO_DIR/banners")" == "Summary did not run." ]] || fail "unsafe marker banner"
+
 # A digest failure still retries and does not leave a summary marker.
 reset_io "2026-09-29 10:30:00"
 payloads >"$IO_DIR/shot_stdout"

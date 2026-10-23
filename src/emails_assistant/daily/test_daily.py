@@ -11,6 +11,7 @@ from emails_assistant.daily import (
     DailyMessage,
     MailboxRead,
     decide_daily,
+    record_summary_miss,
     render_summary_input,
     resolve_daily_dir,
 )
@@ -298,6 +299,20 @@ def test_blank_summary_with_mail_writes_nothing(tmp_path: Path) -> None:
     assert decision.window_start == modified
     assert subject not in decision.failure
     assert not (tmp_path / "2026-09-29.txt").exists()
+
+
+def test_miss_marker_keeps_one_reason_line(tmp_path: Path) -> None:
+    day = tmp_path / "2026-09-29.txt"
+    marker = tmp_path / "2026-09-29.summary-miss"
+
+    record_summary_miss(day, "finish:SAFETY")
+    assert marker.read_text(encoding="utf-8") == "finish:SAFETY\n"
+
+    record_summary_miss(day, "secret-subject")
+    assert marker.read_text(encoding="utf-8") == ""
+
+    record_summary_miss(day, "request:RuntimeError")
+    assert marker.read_text(encoding="utf-8") == "request:RuntimeError\n"
 
 
 def test_quiet_morning_ignores_a_blank_summary(tmp_path: Path) -> None:

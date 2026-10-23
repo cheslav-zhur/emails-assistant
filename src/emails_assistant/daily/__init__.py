@@ -22,6 +22,25 @@ class DailyMessage:
 
 SUMMARY_MISS = "Summary did not run."
 _DAY_FILE = re.compile(r"\d{4}-\d{2}-\d{2}\.txt")
+_MISS_REASON = re.compile(
+    r"no-key|credentials|empty|request:[A-Za-z_][A-Za-z0-9_]*|finish:[A-Z0-9_]+"
+)
+
+
+def summary_miss_path(day_file: Path) -> Path:
+    return day_file.with_name(f"{day_file.stem}.summary-miss")
+
+
+def record_summary_miss(day_file: Path, reason: str) -> None:
+    """Write one allowed reason into the marker, or leave it empty."""
+    line = reason.strip()
+    if _MISS_REASON.fullmatch(line) is None or len(line) > 80:
+        body = ""
+    else:
+        body = f"{line}\n"
+    path = summary_miss_path(day_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
 
 
 @dataclass(frozen=True)
