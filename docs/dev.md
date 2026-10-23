@@ -67,7 +67,7 @@ The digest builds that image only when it is missing or `pyproject.toml` or `uv.
 
 Day files land in `digests/` in the repo. That directory is gitignored. `EMAILS_ASSISTANT_DAILY_DIR` still overrides the directory.
 
-When gitignored `keys/` exists, the morning container mounts it read-only. One service-account JSON in that directory is how the morning container calls Gemini. This is the current store for that key, instead of a `gemini-caller` Keychain item. The host does not mint the token. Mailbox OAuth stays in Keychain. The private key stays out of git.
+When gitignored `keys/` exists, the morning container mounts it read-only. It calls Gemini with `keys/gemini.json` and ignores other JSON files in that directory. This is the current store for that key, instead of a `gemini-caller` Keychain item. The host does not mint the token. Mailbox OAuth stays in Keychain. The private key stays out of git.
 
 **Keychain write `ps` check.** Not observed in this session: the Linux Dev Container cannot run `security`. The script passes the mailbox JSON to `security add-generic-password -w`, so that JSON can show in the process list for the length of the write. The refresh body goes to curl on stdin, not as a curl argument. Do not paste a token into this doc when the Mac check is run.
 

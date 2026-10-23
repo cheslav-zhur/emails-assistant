@@ -104,14 +104,11 @@ def _repo_root() -> Path:
 
 
 def gemini_key_path(*, root: Path | None = None) -> Path | None:
-    """The one service-account file in keys/, or none when it is missing."""
-    directory = (_repo_root() if root is None else root) / "keys"
-    if not directory.is_dir():
+    """Return keys/gemini.json, or none when that file is missing."""
+    path = (_repo_root() if root is None else root) / "keys" / "gemini.json"
+    if not path.is_file():
         return None
-    found = sorted(path for path in directory.glob("*.json") if path.is_file())
-    if len(found) != 1:
-        return None
-    return found[0]
+    return path
 
 
 def _enterprise_client(key_path: Path) -> Any:

@@ -115,17 +115,17 @@ def test_a_call_error_is_a_miss_without_the_body(
     assert "secret-subject" not in (result.miss or "")
 
 
-def test_key_path_uses_the_single_keys_file(tmp_path: Path) -> None:
+def test_key_path_reads_gemini_json_only(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     keys = root / "keys"
     keys.mkdir(parents=True)
 
     assert gemini_key_path(root=root) is None
-    one = keys / "one.json"
-    one.write_text("{}", encoding="utf-8")
-    assert gemini_key_path(root=root) == one
-    (keys / "two.json").write_text("{}", encoding="utf-8")
+    (keys / "ide-agent.json").write_text("{}", encoding="utf-8")
     assert gemini_key_path(root=root) is None
+    gemini = keys / "gemini.json"
+    gemini.write_text("{}", encoding="utf-8")
+    assert gemini_key_path(root=root) == gemini
 
 
 def test_enterprise_client_uses_the_service_account_file(

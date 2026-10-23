@@ -1,7 +1,7 @@
 # mailbox auth leftovers (OAuth lives in Keychain — never commit these if created by mistake)
 secrets/
 .creds/
-# Gemini service account: one JSON, read by the morning container, not committed
+# keys/ is not committed. The morning summary reads keys/gemini.json only.
 keys/
 **/token*.json
 **/client_secret*.json

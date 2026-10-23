@@ -20,7 +20,7 @@
 | Language | Python 3.12+ |
 | Mail access | Gmail API + OAuth |
 | Scope | App login and `inject`: `gmail.readonly`, `gmail.labels`, `gmail.settings.basic`. Morning `one-shot`: `gmail.readonly` only. Gemini service account: `https://www.googleapis.com/auth/cloud-platform` |
-| Credential store | Mailbox OAuth in macOS Keychain (no biometrics). Gemini service account: one JSON in gitignored `keys/`, for now |
+| Credential store | Mailbox OAuth in macOS Keychain (no biometrics). Gemini service account: gitignored `keys/gemini.json`. Other JSON files in `keys/` are not read |
 | Account aliases | `email1`, `email2` (real addresses only in local `.env` / Keychain) |
 | Deps | direct pins in `pyproject.toml`, locked in `uv.lock` |
 | Runtime | Dev Container for interactive use; LaunchAgent runs `docker run --rm` for the morning file |
@@ -51,7 +51,7 @@ docs/solutions/
 ## Security
 
 - Never commit real email addresses, OAuth tokens, `.env`, or real mail bodies/fixtures
-- Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is the one JSON in gitignored `keys/`; the morning container mounts that directory read-only when it exists. Linux container gets an ephemeral Gmail token inject only
+- Credentials: mailbox OAuth in macOS Keychain on the **host** (no biometrics). The Gemini service account is gitignored `keys/gemini.json`. The morning container mounts `keys/` read-only and reads that filename only. Linux container gets an ephemeral Gmail token inject only
 - Scope: App login and `inject` use `gmail.readonly`, `gmail.labels`, and `gmail.settings.basic`. The morning `one-shot` access token is only `gmail.readonly`. The Gemini service account requests `https://www.googleapis.com/auth/cloud-platform`. Do not add further scopes unless explicitly expanded
 - Do not `pip`/`uv`/`npm` install until the user says **ok** / **go ahead** (opening Dev Container is an explicit go for `postCreate` only — details in `docs/dev.md`)
 - Prefer offline; network for package managers / Google APIs only when needed
