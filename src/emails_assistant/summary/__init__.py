@@ -183,6 +183,12 @@ def summarize(
             return Summary("", "credentials")
     prompt = _prompt(mail_text)
     for attempt in range(_REQUEST_ATTEMPTS):
+        logger.info(
+            "Gemini generateContent %s/%s (%s)",
+            attempt + 1,
+            _REQUEST_ATTEMPTS,
+            MODEL,
+        )
         try:
             response = active.models.generate_content(
                 model=MODEL,
@@ -196,5 +202,10 @@ def summarize(
                 continue
             logger.error("Gemini did not return a summary (%s)", detail)
             return Summary("", _request_miss(exc))
-        return _summary_from_response(response)
+        outcome = _summary_from_response(response)
+        if outcome.miss is None:
+            logger.info("Gemini returned a finished summary")
+        else:
+            logger.error("Gemini response miss: %s", outcome.miss)
+        return outcome
     return Summary("", "request:Error")

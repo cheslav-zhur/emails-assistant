@@ -46,8 +46,11 @@ _DAILY_FAILURE = "Daily digest did not run."
 ACCESS_TOKEN_DIR = Path("/dev/shm/emails-assistant")
 _QUIET_LOGGERS = (
     "google",
+    "google_genai",
     "googleapiclient",
     "google_auth_httplib2",
+    "httpcore",
+    "httpx",
     "httplib2",
     "urllib3",
 )
@@ -179,8 +182,14 @@ def _run_daily() -> None:
         mailboxes=tuple(MailboxRead(alias=alias) for alias in aliases),
     )
     if preview.path.is_file():
+        logger.info("Daily file already exists: %s", preview.path.name)
         return
 
+    logger.info(
+        "Daily window starts at %s (%s)",
+        preview.window_start.isoformat(),
+        preview.path.name,
+    )
     if lines:
         for alias, line in zip(aliases, lines, strict=True):
             write_access_token_file(alias, line)
@@ -209,7 +218,9 @@ def _run_daily() -> None:
                 for item in summaries
             )
             reads.append(MailboxRead(alias=alias, messages=messages))
+            logger.info("Mailbox %s: %s messages", alias, len(messages))
     except Exception:  # noqa: BLE001  mailbox failure stays the stable daily failure
+        logger.error("Daily mailbox read failed")
         _daily_fail()
 
     from emails_assistant.summary import Summary, gemini_key_path, summarize
@@ -218,33 +229,43 @@ def _run_daily() -> None:
     key = gemini_key_path()
     outcome: Summary | None
     if not mail_text:
+        logger.info("Quiet morning: no mail in the window")
         outcome = None
     elif key is None:
+        logger.error("Daily summary miss: no-key")
         outcome = Summary("", "no-key")
     else:
+        logger.info("Calling Gemini for the morning summary")
         outcome = summarize(mail_text, key_path=key)
     summary = None if outcome is None else outcome.text
     decision = decide_daily(
         daily_dir=directory, now=now, mailboxes=reads, summary=summary
     )
     if decision.failure:
-        record_summary_miss(
-            decision.path, "" if outcome is None else (outcome.miss or "")
-        )
+        miss = "" if outcome is None else (outcome.miss or "")
+        logger.error("Daily summary miss: %s", miss or "unknown")
+        record_summary_miss(decision.path, miss)
         print(decision.failure)
         raise SystemExit(1)
     if not decision.write or decision.notice is None:
+        logger.error("Daily digest did not write a file")
         _daily_fail()
     decision.path.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(decision.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError:
+        logger.info("Daily file already exists: %s", decision.path.name)
         return
     try:
         os.write(fd, decision.text.encode("utf-8"))
     finally:
         os.close(fd)
     summary_miss_path(decision.path).unlink(missing_ok=True)
+    logger.info(
+        "Wrote %s (%s messages)",
+        decision.path.name,
+        decision.count if decision.count is not None else "?",
+    )
     print(decision.notice)
 
 
@@ -253,9 +274,9 @@ def _configure_logging(verbose: bool) -> None:
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    if verbose:
-        for name in _QUIET_LOGGERS:
-            logging.getLogger(name).setLevel(logging.WARNING)
+    # Keep library HTTP chatter off stderr; -v still raises only our loggers.
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def main(argv: list[str] | None = None) -> None:

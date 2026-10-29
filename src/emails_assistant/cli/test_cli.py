@@ -541,6 +541,39 @@ def test_count_names_both_mailboxes(daily_dir: Path) -> None:
     assert summary in text
 
 
+def test_daily_logs_stages_without_mail_content(
+    daily_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _boxes, patched = _install_mailboxes(
+        _Messages(["a"], subjects={"a": _SUBJECT}),
+        _Messages(["b"], subjects={"b": _SUBJECT}),
+    )
+    client = _Client([_stop("Сводка без темы.")])
+
+    with (
+        patched,
+        patch("emails_assistant.summary._enterprise_client", return_value=client),
+        caplog.at_level("INFO"),
+    ):
+        code, out, err = _run(
+            ["daily"],
+            stdin=_stdin(_payload(_TOKEN), _payload(_TOKEN_2)),
+        )
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert code == 0, err
+    assert out.strip() == "2"
+    assert "Daily window starts at" in text
+    assert "Mailbox email1: 1 messages" in text
+    assert "Mailbox email2: 1 messages" in text
+    assert "Calling Gemini for the morning summary" in text
+    assert "Gemini generateContent 1/3" in text
+    assert "Gemini returned a finished summary" in text
+    assert "Wrote 2026-09-29.txt (2 messages)" in text
+    assert _SUBJECT not in text
+    assert _SUBJECT not in err
+
+
 @pytest.mark.parametrize(
     "text", ["One.", " ".join(f"Sentence {index}." for index in range(12))]
 )

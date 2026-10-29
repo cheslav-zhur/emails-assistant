@@ -182,7 +182,7 @@ def search_messages(
         if max_results is not None and len(summaries) >= max_results:
             break
 
-    logger.info("Search fetched %s messages (q=%s)", len(summaries), query)
+    logger.debug("Search fetched %s messages (q=%s)", len(summaries), query)
     return summaries
 
 
