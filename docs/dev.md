@@ -99,6 +99,7 @@ On the Mac (`Makefile` → `src/host/`):
 | `make inject CONTAINER=<container>` | Refresh due tokens and write access tokens into the container |
 | `make one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
 | `make login ALIAS=<alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
+| `make daily` | Run the morning digest script once (same as the LaunchAgent) |
 | `make install-daily-agent` | Install the digest LaunchAgent |
 | `make host-check` | `shellcheck` and host `*.test.sh` |
 
