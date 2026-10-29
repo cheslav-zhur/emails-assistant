@@ -6,9 +6,9 @@ Local/dev setup for **emails-assistant**. Product decisions live in `AGENTS.md`;
 
 1. Open this repo in the Dev Container (details below).
 2. `cp .env.example .env` — real addresses only in local `.env` (gitignored).
-3. On the Mac, with Docker running, log in each mailbox: `src/host/access-token/access-token.sh login email1`, then the same command with `email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
-4. `src/host/access-token/access-token.sh inject <container>`, then inside the container: `emails-assistant digest`.
-5. Digest (Mac, logged-in GUI session): `src/host/install-daily-agent/install-daily-agent.sh`.
+3. On the Mac, with Docker running, log in each mailbox: `make login ALIAS=email1`, then the same command with `ALIAS=email2`. The command opens the system browser. If it cannot, the authorization URL is printed; open that URL and finish consent.
+4. `make inject CONTAINER=<container>`, then inside the container: `emails-assistant digest`.
+5. Digest (Mac, logged-in GUI session): `make install-daily-agent`.
 
 ## Dev Container
 
@@ -60,7 +60,7 @@ The banner is `terminal-notifier`. A success shows only the count. A mailbox, to
 On the Mac, in a logged-in GUI session, install the agent. The script builds `emails-assistant:app`, copies the plist into `~/Library/LaunchAgents/`, substitutes this repo for `REPLACE_WITH_REPO`, and bootstraps it. Run it again after the clone moves.
 
 ```bash
-src/host/install-daily-agent/install-daily-agent.sh
+make install-daily-agent
 ```
 
 The digest builds that image only when it is missing or `pyproject.toml` or `uv.lock` has changed. A later run does not rebuild it. The login image has its own stamp of those two files.
@@ -92,15 +92,17 @@ Inside the container, after `inject`. Mail commands read `/dev/shm/emails-assist
 | `emails-assistant smoke ALIAS` | List one message as a sanity check |
 | `emails-assistant daily` | Write today's file and print the count. Piped JSON lines are the morning handoff. An empty stdin reads the injected access files |
 
-On the Mac (`src/host/access-token/access-token.sh`):
+On the Mac (`Makefile` → `src/host/`):
 
 | Command | What it does |
 |---------|----------------|
-| `inject <container>` | Refresh due tokens and write access tokens into the container |
-| `one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
-| `login <alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
+| `make inject CONTAINER=<container>` | Refresh due tokens and write access tokens into the container |
+| `make one-shot` | Refresh due tokens and print one access-token JSON object per mailbox |
+| `make login ALIAS=<alias>` | Open the system browser, take consent in a one-shot container, store the mailbox token |
+| `make install-daily-agent` | Install the digest LaunchAgent |
+| `make host-check` | `shellcheck` and host `*.test.sh` |
 
-`src/host/install-daily-agent/install-daily-agent.sh` installs the digest LaunchAgent. Schedule, retries, and the Docker image are in the Daily file section above.
+Schedule, retries, and the Docker image for the daily agent are in the Daily file section above.
 
 Interactive mail stays on stdout. The digest writes the day file and shows a count notification. A click opens the day directory. Telegram is still open; do not add a send channel until that is decided.
 
@@ -113,8 +115,7 @@ ruff check
 ruff format --check
 pyright
 python -m pytest
-shellcheck src/host/*/*.sh
-for test in src/host/*/*.test.sh; do bash "$test"; done
+make host-check
 ```
 
 `ruff format` without `--check` rewrites files. Pyright uses `standard` and includes `src` only. `shellcheck` in this container is the Debian bookworm package from the `dev` image target. CI calls the binary already on the Ubuntu runner.

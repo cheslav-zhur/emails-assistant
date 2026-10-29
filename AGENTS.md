@@ -40,6 +40,7 @@ Structure below is **canonical**; don’t duplicate long trees in other docs.
 ```
 src/emails_assistant/     # application package
 src/host/                 # Mac host: Keychain, inject, LaunchAgent
+Makefile                  # host entry points (`make help`)
 pyproject.toml
 uv.lock
 .devcontainer/            # see docs/dev.md
@@ -69,5 +70,5 @@ docs/solutions/
 
 ## Current status
 
-Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac digest file are in place. A new refresh token comes from `src/host/access-token/access-token.sh login <alias>` on the Mac; that command runs consent in a one-shot container. Host scripts live in `src/host/`; behavior is in [`docs/dev.md`](docs/dev.md).  
+Readonly CLI (`smoke`, `digest`, `search`, `show`, `daily`) and the Mac digest file are in place. A new refresh token comes from `make login ALIAS=<alias>` on the Mac; that command runs consent in a one-shot container. Host entry points are in `Makefile` (`src/host/` underneath); behavior is in [`docs/dev.md`](docs/dev.md).  
 **Still to do:** see [`docs/backlog.md`](docs/backlog.md).
