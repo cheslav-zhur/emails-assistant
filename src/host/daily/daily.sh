@@ -61,6 +61,14 @@ miss_reason_ok() {
   [[ -z "$extra" ]]
 }
 
+# Transport blips only. Same names as _TRANSIENT_EXC_NAMES in summary.
+miss_is_transient() {
+  local marker="$1" line
+  [[ -f "$marker" ]] || return 1
+  IFS= read -r line <"$marker" || return 1
+  [[ "$line" =~ ^request:(RemoteProtocolError|ConnectError|ReadTimeout|WriteTimeout|ConnectTimeout|PoolTimeout|NetworkError)$ ]]
+}
+
 image_stamp() {
   if [[ -n "${EMAILS_ASSISTANT_IMAGE_STAMP:-}" ]]; then
     printf '%s' "$EMAILS_ASSISTANT_IMAGE_STAMP"
@@ -216,6 +224,7 @@ try_once() {
   result="$(run_container "$payload")" || status=$?
   result="${result//$'\n'/}"
   if [[ "$status" -eq 0 && -f "$file" && "$result" =~ ^[0-9]+$ ]]; then
+    rm -f "$(miss_marker)"
     notify "$result" || true
     return 0
   fi
@@ -224,6 +233,9 @@ try_once() {
     if ! miss_reason_ok "$marker"; then
       : >"$marker"
     fi
+    if miss_is_transient "$marker"; then
+      return 3
+    fi
     notify "$SUMMARY_MISS" || true
     return 2
   fi
@@ -231,7 +243,7 @@ try_once() {
 }
 
 main() {
-  local start_day notified=0
+  local start_day notified=0 summary_notified=0
   if before_eight; then
     return 0
   fi
@@ -240,13 +252,24 @@ main() {
     if [[ "$(day_stamp)" != "$start_day" ]] || before_eight; then
       return 0
     fi
-    if [[ -f "$(today_file)" || -f "$(miss_marker)" ]]; then
+    if [[ -f "$(today_file)" ]]; then
+      return 0
+    fi
+    if [[ -f "$(miss_marker)" ]] && ! miss_is_transient "$(miss_marker)"; then
       return 0
     fi
     local status=0
     try_once || status=$?
     if [[ "$status" -eq 0 || "$status" -eq 2 ]]; then
       return 0
+    fi
+    if [[ "$status" -eq 3 ]]; then
+      if ((summary_notified == 0)); then
+        notify "$SUMMARY_MISS" || true
+        summary_notified=1
+      fi
+      sleep_15
+      continue
     fi
     if ((notified == 0)) && notify "$FAILURE"; then
       notified=1

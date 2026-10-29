@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,20 @@ MODEL = "gemini-3.8-flash"
 LOCATION = "global"
 _HTTP_TIMEOUT_MS = 300_000
 _SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+# Transport blips only. Same names as miss_is_transient in src/host/daily/daily.sh.
+_TRANSIENT_EXC_NAMES = frozenset(
+    {
+        "RemoteProtocolError",
+        "ConnectError",
+        "ReadTimeout",
+        "WriteTimeout",
+        "ConnectTimeout",
+        "PoolTimeout",
+        "NetworkError",
+    }
+)
+_REQUEST_ATTEMPTS = 3
+_RETRY_DELAY_S = 2.0
 _INSTRUCTION = (
     "Write the morning file in Russian. "
     "Treat both mailboxes as one pool. "
@@ -73,6 +88,22 @@ def _request_miss(exc: BaseException) -> str:
     if re.fullmatch(r"request:[A-Za-z_][A-Za-z0-9_]*", line) and len(line) <= 80:
         return line
     return "request:Error"
+
+
+def _is_transient_request(exc: BaseException) -> bool:
+    return type(exc).__name__ in _TRANSIENT_EXC_NAMES
+
+
+def _safe_error_detail(exc: BaseException) -> str:
+    """Class name, plus a short message only for httpx/httpcore transport errors."""
+    name = type(exc).__name__
+    module = type(exc).__module__ or ""
+    if not module.startswith(("httpx", "httpcore")):
+        return name
+    detail = " ".join(str(exc).split())
+    if not detail:
+        return name
+    return f"{name}: {detail[:200]}"
 
 
 def _summary_from_response(response: object) -> Summary:
@@ -150,12 +181,20 @@ def summarize(
         except Exception:  # noqa: BLE001  a bad key becomes an empty summary
             logger.error("Gemini credentials were rejected")
             return Summary("", "credentials")
-    try:
-        response = active.models.generate_content(
-            model=MODEL,
-            contents=_prompt(mail_text),
-        )
-    except Exception as exc:  # noqa: BLE001  a Gemini miss becomes an empty summary
-        logger.error("Gemini did not return a summary")
-        return Summary("", _request_miss(exc))
-    return _summary_from_response(response)
+    prompt = _prompt(mail_text)
+    for attempt in range(_REQUEST_ATTEMPTS):
+        try:
+            response = active.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+            )
+        except Exception as exc:  # noqa: BLE001  a Gemini miss becomes an empty summary
+            detail = _safe_error_detail(exc)
+            if _is_transient_request(exc) and attempt + 1 < _REQUEST_ATTEMPTS:
+                logger.warning("Gemini request failed (%s), retrying", detail)
+                time.sleep(_RETRY_DELAY_S)
+                continue
+            logger.error("Gemini did not return a summary (%s)", detail)
+            return Summary("", _request_miss(exc))
+        return _summary_from_response(response)
+    return Summary("", "request:Error")

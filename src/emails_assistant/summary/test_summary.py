@@ -113,6 +113,71 @@ def test_a_call_error_is_a_miss_without_the_body(
     assert result.miss == "request:RuntimeError"
     assert "secret-subject" not in caplog.text
     assert "secret-subject" not in (result.miss or "")
+    assert "RuntimeError" in caplog.text
+    assert len(client.models.calls) == 1
+
+
+def test_transient_request_retries_then_succeeds(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class RemoteProtocolError(Exception):
+        __module__ = "httpx"
+
+    responses: list[object] = [
+        RemoteProtocolError("peer closed connection"),
+        _Response(_Reason("STOP"), [_Part("After retry.")]),
+    ]
+
+    class _FlakyModels:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, str]] = []
+
+        def generate_content(self, *, model: str, contents: str) -> object:
+            self.calls.append({"model": model, "contents": contents})
+            item = responses.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+    class _FlakyClient:
+        def __init__(self) -> None:
+            self.models = _FlakyModels()
+
+    client = _FlakyClient()
+
+    with (
+        patch("emails_assistant.summary.time.sleep") as sleep,
+        caplog.at_level("WARNING"),
+    ):
+        result = summarize("mail", client=client)
+
+    assert result.text == "After retry."
+    assert result.miss is None
+    assert len(client.models.calls) == 2
+    sleep.assert_called_once_with(2.0)
+    assert "RemoteProtocolError" in caplog.text
+    assert "peer closed connection" in caplog.text
+
+
+def test_transient_request_exhausts_retries(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class RemoteProtocolError(Exception):
+        __module__ = "httpx"
+
+    client = _Client(RemoteProtocolError("disconnected"))
+
+    with (
+        patch("emails_assistant.summary.time.sleep") as sleep,
+        caplog.at_level("WARNING"),
+    ):
+        result = summarize("mail", client=client)
+
+    assert result.text == ""
+    assert result.miss == "request:RemoteProtocolError"
+    assert len(client.models.calls) == 3
+    assert sleep.call_count == 2
+    assert "disconnected" in caplog.text
 
 
 def test_key_path_reads_gemini_json_only(tmp_path: Path) -> None:

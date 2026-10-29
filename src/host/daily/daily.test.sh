@@ -378,6 +378,37 @@ run_agent
 [[ "$(cat "$DAY_DIR/2026-09-29.summary-miss")" == "finish:SAFETY" ]] || fail "reason was dropped: $(cat "$DAY_DIR/2026-09-29.summary-miss")"
 [[ ! -e "$DAY_DIR/2026-09-29.txt" ]] || fail "reason run wrote a day file"
 [[ "$(cat "$IO_DIR/banners")" == "Summary did not run." ]] || fail "reason banner"
+[[ ! -s "$IO_DIR/sleeps" ]] || fail "finish miss retried"
+
+# A transport summary miss retries after 15 minutes and keeps one banner.
+reset_io "2026-09-29 10:30:00"
+payloads >"$IO_DIR/shot_stdout"
+printf '%s\n' "Summary did not run." >"$IO_DIR/docker_stdout"
+printf '1\n' >"$IO_DIR/docker_exit"
+printf '%s\n' "request:RemoteProtocolError" >"$IO_DIR/write_body"
+printf '%s' "$DAY_DIR/2026-09-29.summary-miss" >"$IO_DIR/write_path"
+cat >"$IO_DIR/after_sleep" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="${EMAILS_ASSISTANT_STUB_DIR:?}"
+rm -f "$dir/docker_exit"
+printf '%s\n' "2026-09-29 10:45:00" >"$dir/now"
+printf '%s\n%s' \
+  '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
+  '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
+printf '%s\n' "from-container" >"$dir/write_body"
+printf '%s\n' "4" >"$dir/docker_stdout"
+printf '%s' "${EMAILS_ASSISTANT_DAILY_DIR}/2026-09-29.txt" >"$dir/write_path"
+EOF
+chmod +x "$IO_DIR/after_sleep"
+run_agent
+[[ "$(sed -n '1p' "$IO_DIR/banners")" == "Summary did not run." ]] || fail "transient summary banner"
+[[ "$(grep -c "Summary did not run." "$IO_DIR/banners")" -eq 1 ]] || fail "second transient summary banner"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "4" ]] || fail "later count after transient miss"
+[[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "transient miss did not wait 15 minutes"
+[[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "transient retry wrote nothing"
+[[ ! -e "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "success left a transient marker"
+[[ "$(grep -c shot "$IO_DIR/shots")" -eq 2 ]] || fail "transient miss one-shot count"
 
 # A marker that is not one reason line is emptied.
 reset_io "2026-09-29 10:30:00"
