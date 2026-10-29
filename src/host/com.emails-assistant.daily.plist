@@ -17,5 +17,9 @@
   </dict>
   <key>RunAtLoad</key>
   <true/>
+  <key>StandardOutPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/emails-assistant/daily.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/emails-assistant/daily.log</string>
 </dict>
 </plist>

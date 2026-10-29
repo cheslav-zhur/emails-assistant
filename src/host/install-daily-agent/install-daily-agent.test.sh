@@ -43,10 +43,14 @@ EMAILS_ASSISTANT_STUB_DIR="$IO_DIR" \
   "$SCRIPT"
 
 installed="$HOME_DIR/Library/LaunchAgents/com.emails-assistant.daily.plist"
+log="$HOME_DIR/Library/Logs/emails-assistant/daily.log"
 [[ -f "$installed" ]] || fail "plist was not installed"
-[[ "$(cat "$installed")" != *REPLACE_WITH_REPO* ]] || fail "placeholder left in the installed plist"
+[[ -d "$HOME_DIR/Library/Logs/emails-assistant" ]] || fail "log directory was not created"
+[[ "$(cat "$installed")" != *REPLACE_WITH_* ]] || fail "placeholder left in the installed plist"
 [[ "$(cat "$installed")" == *"$ROOT/src/host/daily/daily.sh"* ]] || fail "script path was not substituted"
+[[ "$(cat "$installed")" == *"$log"* ]] || fail "log path was not substituted"
 [[ "$(cat "$ROOT/src/host/com.emails-assistant.daily.plist")" == *REPLACE_WITH_REPO* ]] || fail "repo plist was rewritten"
+[[ "$(cat "$ROOT/src/host/com.emails-assistant.daily.plist")" == *REPLACE_WITH_HOME* ]] || fail "repo log placeholder was rewritten"
 
 domain="gui/$(id -u)"
 [[ "$(sed -n '1p' "$IO_DIR/calls")" == "bootout ${domain} ${installed}" ]] || fail "bootout: $(sed -n '1p' "$IO_DIR/calls")"

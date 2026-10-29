@@ -196,6 +196,7 @@ fi
 grep -n '<key>Hour</key>' -A1 "$PLIST" | grep -q '<integer>8</integer>' || fail "plist hour"
 grep -n '<key>Minute</key>' -A1 "$PLIST" | grep -q '<integer>0</integer>' || fail "plist minute"
 grep -n '<key>RunAtLoad</key>' -A1 "$PLIST" | grep -q '<true/>' || fail "plist RunAtLoad"
+grep -q 'REPLACE_WITH_HOME/Library/Logs/emails-assistant/daily.log' "$PLIST" || fail "plist log path"
 grep -n 'WakeSystem\|StartInterval' "$PLIST" >/dev/null && fail "plist wakes the Mac"
 
 # 07:40, no file: no one-shot, no banner, no file.

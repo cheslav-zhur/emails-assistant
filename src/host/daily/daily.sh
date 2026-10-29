@@ -154,15 +154,20 @@ folder_url() {
   printf 'file://%s' "$encoded"
 }
 
+# Two-line success notice from the container. No free text from mail.
+count_notice_ok() {
+  local subtitle="$1" message="$2"
+  [[ "$subtitle" =~ ^[1-9][0-9]?\ [A-Z][a-z]{2}$ ]] || return 1
+  [[ "$message" =~ ^[0-9]+\ messages?\ summary$ ]]
+}
+
 notify() {
   local message="$1"
   local subtitle="${2:-}"
   local dir url
   local args=(-title "emails-assistant" -message "$message")
-  # Only the fixed notices. No free text from mail.
   if [[ -n "$subtitle" ]]; then
-    [[ "$subtitle" =~ ^[1-9][0-9]?\ [A-Z][a-z]{2}$ ]] || return 1
-    [[ "$message" =~ ^[0-9]+\ messages?\ summary$ ]] || return 1
+    count_notice_ok "$subtitle" "$message" || return 1
     args+=(-subtitle "$subtitle")
   else
     [[ "$message" == "$FAILURE" || "$message" == "$SUMMARY_MISS" ]] || return 1
@@ -233,7 +238,7 @@ try_once() {
   if [[ "$status" -eq 0 && -f "$file" && "$result" == *$'\n'* && "$result" != *$'\n'*$'\n'* ]]; then
     subtitle="${result%%$'\n'*}"
     message="${result#*$'\n'}"
-    if [[ "$subtitle" =~ ^[1-9][0-9]?\ [A-Z][a-z]{2}$ && "$message" =~ ^[0-9]+\ messages?\ summary$ ]]; then
+    if count_notice_ok "$subtitle" "$message"; then
       rm -f "$(miss_marker)"
       notify "$message" "$subtitle" || true
       return 0

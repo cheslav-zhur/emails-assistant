@@ -21,18 +21,24 @@ launchctl_cmd() {
 }
 
 mkdir -p "${HOME}/Library/LaunchAgents"
+mkdir -p "${HOME}/Library/Logs/emails-assistant"
 "$ROOT/src/host/daily/daily.sh" build-image
 python3 -c '
 import pathlib, sys
-src, dst, root = sys.argv[1:]
+src, dst, root, home = sys.argv[1:]
 text = pathlib.Path(src).read_text(encoding="utf-8")
-if "REPLACE_WITH_REPO" not in text:
-    raise SystemExit("plist is missing REPLACE_WITH_REPO")
+if "REPLACE_WITH_REPO" not in text or "REPLACE_WITH_HOME" not in text:
+    raise SystemExit("plist is missing REPLACE_WITH_REPO or REPLACE_WITH_HOME")
 path = root + "/src/host/daily/daily.sh"
-pathlib.Path(dst).write_text(text.replace("REPLACE_WITH_REPO", root), encoding="utf-8")
-if path not in pathlib.Path(dst).read_text(encoding="utf-8"):
-    raise SystemExit("installed plist is missing the script path")
-' "$SRC" "$DEST" "$ROOT"
+log = home + "/Library/Logs/emails-assistant/daily.log"
+body = text.replace("REPLACE_WITH_REPO", root).replace("REPLACE_WITH_HOME", home)
+pathlib.Path(dst).write_text(body, encoding="utf-8")
+installed = pathlib.Path(dst).read_text(encoding="utf-8")
+if path not in installed or log not in installed:
+    raise SystemExit("installed plist is missing the script or log path")
+if "REPLACE_WITH_" in installed:
+    raise SystemExit("placeholder left in the installed plist")
+' "$SRC" "$DEST" "$ROOT" "$HOME"
 
 if ! command -v terminal-notifier >/dev/null 2>&1; then
   echo "terminal-notifier is not installed. A banner click cannot open the day directory until it is." >&2
