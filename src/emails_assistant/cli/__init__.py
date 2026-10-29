@@ -318,7 +318,7 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser(
         "daily",
-        help="Write today's digest file and print the message count",
+        help="Write today's digest file and print D Mon / N message(s) summary",
     )
 
     search_p = sub.add_parser(

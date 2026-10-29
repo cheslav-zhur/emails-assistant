@@ -278,7 +278,7 @@ def test_two_mailboxes_become_one_summary_and_a_count(
     day = daily_dir / "2026-09-29.txt"
     text = day.read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "5"
+    assert out.strip() == "29 Sep\n5 messages summary"
     assert summary in text
     assert "subject-a" not in text
     assert "subject-e" not in text
@@ -322,7 +322,7 @@ def test_daily_sends_body_or_snippet_and_not_the_message_id(daily_dir: Path) -> 
     contents = client.models.calls[0]["contents"]
     day = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "2"
+    assert out.strip() == "29 Sep\n2 messages summary"
     assert first.formats == ["full"]
     assert second.formats == ["full"]
     assert "plain body" in contents
@@ -381,7 +381,7 @@ def test_one_hundred_twenty_messages_are_all_written(daily_dir: Path) -> None:
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     contents = client.models.calls[0]["contents"]
     assert code == 0, err
-    assert out.strip() == "120"
+    assert out.strip() == "29 Sep\n120 messages summary"
     assert contents.count("subject-") == 120
     assert "subject-119" in contents
     assert "subject-119" not in text
@@ -477,7 +477,7 @@ def test_empty_stdin_reads_injected_access_files(
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "2"
+    assert out.strip() == "29 Sep\n2 messages summary"
     assert summary in text
     assert _TOKEN not in text
 
@@ -499,7 +499,7 @@ def test_a_terminal_uses_injected_files_and_leaves_stdin(
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "1"
+    assert out.strip() == "29 Sep\n1 message summary"
     assert "С терминала." in text
     assert _REFRESH not in text
     assert "ya29-unread" not in text
@@ -536,7 +536,7 @@ def test_count_names_both_mailboxes(daily_dir: Path) -> None:
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "2"
+    assert out.strip() == "29 Sep\n2 messages summary"
     assert "2 письма\nemail1: 1\nemail2: 1\n" in text
     assert summary in text
 
@@ -562,7 +562,7 @@ def test_daily_logs_stages_without_mail_content(
 
     text = "\n".join(record.getMessage() for record in caplog.records)
     assert code == 0, err
-    assert out.strip() == "2"
+    assert out.strip() == "29 Sep\n2 messages summary"
     assert "Daily window starts at" in text
     assert "Mailbox email1: 1 messages" in text
     assert "Mailbox email2: 1 messages" in text
@@ -593,7 +593,7 @@ def test_stop_text_outside_the_band_is_still_written(
         )
 
     assert code == 0, err
-    assert out.strip() == "1"
+    assert out.strip() == "29 Sep\n1 message summary"
     assert text in (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
 
 
@@ -615,7 +615,7 @@ def test_quiet_morning_skips_gemini_even_with_a_key(daily_dir: Path) -> None:
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "0"
+    assert out.strip() == "29 Sep\n0 messages summary"
     assert "There were no new messages." in text
     assert built == []
 
@@ -725,7 +725,7 @@ def test_a_miss_leaves_the_mail_in_the_next_summary(daily_dir: Path) -> None:
 
     text = (daily_dir / "2026-09-29.txt").read_text(encoding="utf-8")
     assert code == 0, err
-    assert out.strip() == "1"
+    assert out.strip() == "29 Sep\n1 message summary"
     assert not (daily_dir / "2026-09-29.summary-miss").exists()
     assert "Now it is summarized." in text
     assert subject not in text

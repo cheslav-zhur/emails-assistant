@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+from calendar import month_abbr
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 
@@ -80,12 +81,13 @@ def decide_daily(
     mailboxes: Sequence[MailboxRead],
     summary: str | None = None,
 ) -> DailyDecision:
-    """Return whether to write today's file, its text, and a count-only notice.
+    """Return whether to write today's file, its text, and a count notice.
 
     ``summary=None`` keeps the message list. A non-blank summary replaces that
     list, is not checked for length, and is preceded by a Russian count of the
     window. A blank summary with new mail writes nothing. No new mail still
-    writes the quiet file and ignores ``summary``.
+    writes the quiet file and ignores ``summary``. The notice is two lines
+    ``D Mon`` and ``N message(s) summary``, with no mail content.
     """
     day_path = daily_dir / f"{now.date().isoformat()}.txt"
     start = _window_start(daily_dir, day_path, now)
@@ -107,21 +109,22 @@ def decide_daily(
         )
         total += len(kept)
         kept_sections.append((box.alias, kept))
+    day = day_path.stem
     if total == 0:
         return DailyDecision(
             write=True,
-            text=_format_daily(day=day_path.stem, sections=kept_sections, count=0),
+            text=_format_daily(day=day, sections=kept_sections, count=0),
             count=0,
-            notice="0",
+            notice=_notice(day, 0),
             window_start=start,
             path=day_path,
         )
     if summary is None:
         return DailyDecision(
             write=True,
-            text=_format_daily(day=day_path.stem, sections=kept_sections, count=total),
+            text=_format_daily(day=day, sections=kept_sections, count=total),
             count=total,
-            notice=str(total),
+            notice=_notice(day, total),
             window_start=start,
             path=day_path,
         )
@@ -138,9 +141,9 @@ def decide_daily(
         )
     return DailyDecision(
         write=True,
-        text=_format_summary(day=day_path.stem, summary=text, sections=kept_sections),
+        text=_format_summary(day=day, summary=text, sections=kept_sections),
         count=total,
-        notice=str(total),
+        notice=_notice(day, total),
         window_start=start,
         path=day_path,
     )
@@ -224,6 +227,12 @@ def _letter_word(count: int) -> str:
     if 2 <= mod10 <= 4:
         return "письма"
     return "писем"
+
+
+def _notice(day: str, count: int) -> str:
+    d = date.fromisoformat(day)
+    word = "message" if count == 1 else "messages"
+    return f"{d.day} {month_abbr[d.month]}\n{count} {word} summary"
 
 
 def _count_block(sections: Sequence[tuple[str, tuple[DailyMessage, ...]]]) -> str:

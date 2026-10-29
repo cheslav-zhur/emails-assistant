@@ -143,7 +143,7 @@ def test_no_new_mail_still_plans_a_zero_file(tmp_path: Path) -> None:
 
     assert decision.write is True
     assert decision.count == 0
-    assert decision.notice == "0"
+    assert decision.notice == "29 Sep\n0 messages summary"
     assert "There were no new messages." in decision.text
     assert "(none)" in decision.text
     assert "already-shown" not in decision.text
@@ -187,7 +187,7 @@ def test_count_is_the_sum_across_both_aliases(tmp_path: Path) -> None:
 
     assert decision.write is True
     assert decision.count == 5
-    assert decision.notice == "5"
+    assert decision.notice == "29 Sep\n5 messages summary"
     assert "email1" in decision.text
     assert "email2" in decision.text
     assert "one-0" in decision.text
@@ -213,7 +213,7 @@ def test_summary_replaces_the_list_and_keeps_the_count(tmp_path: Path) -> None:
 
     assert decision.write is True
     assert decision.count == 5
-    assert decision.notice == "5"
+    assert decision.notice == "29 Sep\n5 messages summary"
     assert decision.failure is None
     assert "5 писем\nemail1: 2\nemail2: 3\n" in decision.text
     assert summary in decision.text
@@ -325,7 +325,7 @@ def test_quiet_morning_ignores_a_blank_summary(tmp_path: Path) -> None:
 
     assert decision.write is True
     assert decision.count == 0
-    assert decision.notice == "0"
+    assert decision.notice == "29 Sep\n0 messages summary"
     assert decision.failure is None
     assert "There were no new messages." in decision.text
 

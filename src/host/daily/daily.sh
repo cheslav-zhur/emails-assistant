@@ -156,22 +156,30 @@ folder_url() {
 
 notify() {
   local message="$1"
+  local subtitle="${2:-}"
   local dir url
-  case "$message" in
-    *[!0-9A-Za-z.\ ]*) return 1 ;;
-  esac
+  local args=(-title "emails-assistant" -message "$message")
+  # Only the fixed notices. No free text from mail.
+  if [[ -n "$subtitle" ]]; then
+    [[ "$subtitle" =~ ^[1-9][0-9]?\ [A-Z][a-z]{2}$ ]] || return 1
+    [[ "$message" =~ ^[0-9]+\ messages?\ summary$ ]] || return 1
+    args+=(-subtitle "$subtitle")
+  else
+    [[ "$message" == "$FAILURE" || "$message" == "$SUMMARY_MISS" ]] || return 1
+  fi
   dir="$(daily_dir)"
   mkdir -p "$dir"
   url="$(folder_url "$dir")"
+  args+=(-open "$url")
   if [[ -n "${EMAILS_ASSISTANT_NOTIFIER:-}" ]]; then
-    "$EMAILS_ASSISTANT_NOTIFIER" -title "emails-assistant" -message "$message" -open "$url"
+    "$EMAILS_ASSISTANT_NOTIFIER" "${args[@]}"
     return
   fi
   if ! command -v terminal-notifier >/dev/null 2>&1; then
     echo "terminal-notifier is not installed." >&2
     return 1
   fi
-  terminal-notifier -title "emails-assistant" -message "$message" -open "$url"
+  terminal-notifier "${args[@]}"
 }
 
 run_container() {
@@ -220,14 +228,18 @@ try_once() {
     return 1
   fi
   file="$(today_file)"
-  local status=0
+  local status=0 subtitle message
   result="$(run_container "$payload")" || status=$?
-  result="${result//$'\n'/}"
-  if [[ "$status" -eq 0 && -f "$file" && "$result" =~ ^[0-9]+$ ]]; then
-    rm -f "$(miss_marker)"
-    notify "$result" || true
-    return 0
+  if [[ "$status" -eq 0 && -f "$file" && "$result" == *$'\n'* && "$result" != *$'\n'*$'\n'* ]]; then
+    subtitle="${result%%$'\n'*}"
+    message="${result#*$'\n'}"
+    if [[ "$subtitle" =~ ^[1-9][0-9]?\ [A-Z][a-z]{2}$ && "$message" =~ ^[0-9]+\ messages?\ summary$ ]]; then
+      rm -f "$(miss_marker)"
+      notify "$message" "$subtitle" || true
+      return 0
+    fi
   fi
+  result="${result//$'\n'/}"
   if [[ "$result" == "$SUMMARY_MISS" && ! -f "$file" ]]; then
     marker="$(miss_marker)"
     if ! miss_reason_ok "$marker"; then

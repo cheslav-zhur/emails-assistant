@@ -38,11 +38,16 @@ set -euo pipefail
 dir="${EMAILS_ASSISTANT_STUB_DIR:?}"
 printf '%s\n' "$*" >>"$dir/banner_args"
 message=""
+subtitle=""
 url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -message)
       message="${2:-}"
+      shift 2
+      ;;
+    -subtitle)
+      subtitle="${2:-}"
       shift 2
       ;;
     -open)
@@ -54,7 +59,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-printf '%s\n' "$message" >>"$dir/banners"
+if [[ -n "$subtitle" ]]; then
+  printf '%s\n' "$subtitle - $message" >>"$dir/banners"
+else
+  printf '%s\n' "$message" >>"$dir/banners"
+fi
 printf '%s\n' "$url" >>"$dir/banner_urls"
 EOF
 
@@ -145,7 +154,7 @@ arm_success() {
   rm -f "$IO_DIR/shot_fail" "$IO_DIR/docker_down" "$IO_DIR/docker_exit"
   printf '%s\n' "from-container" >"$IO_DIR/write_body"
   printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
-  printf '%s\n' "5" >"$IO_DIR/docker_stdout"
+  printf '%s\n' "29 Sep" "5 messages summary" >"$IO_DIR/docker_stdout"
 }
 
 run_agent() {
@@ -203,7 +212,7 @@ arm_success
 run_agent
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "expected one one-shot"
 [[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 1 ]] || fail "missing image build"
-[[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "count banner: $(cat "$IO_DIR/banners")"
+[[ "$(cat "$IO_DIR/banners")" == "29 Sep - 5 messages summary" ]] || fail "count banner: $(cat "$IO_DIR/banners")"
 assert_banner_folder "$DAY_DIR"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "host replaced the day file"
 [[ "$(cat "$IO_DIR/docker_stdin")" == *"access_token"* ]] || fail "token was not piped to docker"
@@ -233,7 +242,7 @@ else
 fi
 run_agent
 [[ "$(grep -c '^build$' "$IO_DIR/docker_cmds")" -eq 0 ]] || fail "rebuilt a current image"
-[[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "current image did not run"
+[[ "$(cat "$IO_DIR/banners")" == "29 Sep - 5 messages summary" ]] || fail "current image did not run"
 
 # Docker is down at 08:00, then up 15 minutes later.
 reset_io "2026-09-29 08:00:00"
@@ -249,7 +258,7 @@ printf '%s\n%s' \
   '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
   '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
 printf '%s\n' "from-container" >"$dir/write_body"
-printf '%s\n' "4" >"$dir/docker_stdout"
+printf '%s\n' "29 Sep" "4 messages summary" >"$dir/docker_stdout"
 EOF
 # write_path is the day file; arm it without clearing docker_down.
 printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
@@ -257,7 +266,7 @@ chmod +x "$IO_DIR/after_sleep"
 run_agent
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "one-shot ran while docker was down"
 [[ "$(sed -n '1p' "$IO_DIR/banners")" == "$FAILURE" ]] || fail "failure banner"
-[[ "$(sed -n '2p' "$IO_DIR/banners")" == "4" ]] || fail "later count banner"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "29 Sep - 4 messages summary" ]] || fail "later count banner"
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second failure banner"
 [[ "$(cat "$IO_DIR/banners")" != *"$SUBJECT"* && "$(cat "$IO_DIR/banners")" != *"someone"* ]] || fail "failure banner has mail"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "later try did not write the file"
@@ -279,7 +288,7 @@ printf '%s\n%s' \
   '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
   '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
 printf '%s\n' "from-container" >"$dir/write_body"
-printf '%s\n' "2" >"$dir/docker_stdout"
+printf '%s\n' "29 Sep" "2 messages summary" >"$dir/docker_stdout"
 EOF
 printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
 chmod +x "$IO_DIR/after_sleep"
@@ -288,7 +297,7 @@ run_agent
 [[ ! -e "$DAY_DIR/2026-09-29.txt" || "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "file written on the failed one-shot"
 [[ "$(sed -n '1p' "$IO_DIR/banners")" == "$FAILURE" ]] || fail "re-login banner"
 [[ "$(cat "$IO_DIR/banners")" != *"$TOKEN_1"* && "$(cat "$IO_DIR/banners")" != *"$SUBJECT"* ]] || fail "re-login banner leaked"
-[[ "$(sed -n '2p' "$IO_DIR/banners")" == "2" ]] || fail "later try after re-login"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "29 Sep - 2 messages summary" ]] || fail "later try after re-login"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "later try wrote nothing"
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second failure banner after re-login"
 
@@ -358,12 +367,13 @@ run_agent
 printf '%s\n' "2026-09-30 10:30:00" >"$IO_DIR/now"
 arm_success
 printf '%s' "$DAY_DIR/2026-09-30.txt" >"$IO_DIR/write_path"
+printf '%s\n' "30 Sep" "5 messages summary" >"$IO_DIR/docker_stdout"
 : >"$IO_DIR/shots"
 : >"$IO_DIR/banners"
 : >"$IO_DIR/docker_cmds"
 run_agent
 [[ "$(grep -c shot "$IO_DIR/shots")" -eq 1 ]] || fail "next day did not run"
-[[ "$(cat "$IO_DIR/banners")" == "5" ]] || fail "next day banner: $(cat "$IO_DIR/banners")"
+[[ "$(cat "$IO_DIR/banners")" == "30 Sep - 5 messages summary" ]] || fail "next day banner: $(cat "$IO_DIR/banners")"
 [[ -f "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "next day removed yesterday's marker"
 [[ "$(cat "$DAY_DIR/2026-09-30.txt")" == "from-container" ]] || fail "next day wrote nothing"
 
@@ -397,14 +407,14 @@ printf '%s\n%s' \
   '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
   '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
 printf '%s\n' "from-container" >"$dir/write_body"
-printf '%s\n' "4" >"$dir/docker_stdout"
+printf '%s\n' "29 Sep" "4 messages summary" >"$dir/docker_stdout"
 printf '%s' "${EMAILS_ASSISTANT_DAILY_DIR}/2026-09-29.txt" >"$dir/write_path"
 EOF
 chmod +x "$IO_DIR/after_sleep"
 run_agent
 [[ "$(sed -n '1p' "$IO_DIR/banners")" == "Summary did not run." ]] || fail "transient summary banner"
 [[ "$(grep -c "Summary did not run." "$IO_DIR/banners")" -eq 1 ]] || fail "second transient summary banner"
-[[ "$(sed -n '2p' "$IO_DIR/banners")" == "4" ]] || fail "later count after transient miss"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "29 Sep - 4 messages summary" ]] || fail "later count after transient miss"
 [[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "transient miss did not wait 15 minutes"
 [[ "$(cat "$DAY_DIR/2026-09-29.txt")" == "from-container" ]] || fail "transient retry wrote nothing"
 [[ ! -e "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "success left a transient marker"
@@ -438,7 +448,7 @@ printf '%s\n%s' \
   '{"access_token":"ya29-example-access","expiry":"2026-09-29T12:00:00Z"}' \
   '{"access_token":"ya29-email2","expiry":"2026-09-29T12:00:00Z"}' >"$dir/shot_stdout"
 printf '%s\n' "from-container" >"$dir/write_body"
-printf '%s\n' "3" >"$dir/docker_stdout"
+printf '%s\n' "29 Sep" "3 messages summary" >"$dir/docker_stdout"
 EOF
 printf '%s' "$DAY_DIR/2026-09-29.txt" >"$IO_DIR/write_path"
 chmod +x "$IO_DIR/after_sleep"
@@ -446,7 +456,7 @@ run_agent
 [[ ! -e "$DAY_DIR/2026-09-29.summary-miss" ]] || fail "digest failure wrote a summary marker"
 [[ "$(sed -n '1p' "$IO_DIR/banners")" == "$FAILURE" ]] || fail "digest failure banner"
 [[ "$(grep -c "$FAILURE" "$IO_DIR/banners")" -eq 1 ]] || fail "second digest failure banner"
-[[ "$(sed -n '2p' "$IO_DIR/banners")" == "3" ]] || fail "later count after digest failure"
+[[ "$(sed -n '2p' "$IO_DIR/banners")" == "29 Sep - 3 messages summary" ]] || fail "later count after digest failure"
 [[ "$(cat "$IO_DIR/sleeps")" == "900" ]] || fail "digest failure did not wait 15 minutes"
 assert_banner_folder "$DAY_DIR"
 
